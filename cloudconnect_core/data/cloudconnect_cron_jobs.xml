@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- Cron Job: Renovación automática de tokens OAuth -->
+        <record id="cron_refresh_access_tokens" model="ir.cron">
+            <field name="name">CloudConnect: Refresh Access Tokens</field>
+            <field name="model_id" ref="model_cloudconnect_config"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_refresh_access_tokens()</field>
+            <field name="interval_number">30</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">5</field>
+        </record>
+
+        <!-- Cron Job: Limpieza de logs antiguos -->
+        <record id="cron_cleanup_old_logs" model="ir.cron">
+            <field name="name">CloudConnect: Cleanup Old Logs</field>
+            <field name="model_id" ref="model_cloudconnect_sync_log"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_cleanup_old_logs()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).replace(hour=2, minute=0, second=0)"/>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">3</field>
+        </record>
+
+        <!-- Cron Job: Monitoreo de salud de webhooks -->
+        <record id="cron_monitor_webhook_health" model="ir.cron">
+            <field name="name">CloudConnect: Monitor Webhook Health</field>
+            <field name="model_id" ref="model_cloudconnect_webhook"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_monitor_webhook_health()</field>
+            <field name="interval_number">5</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">4</field>
+        </record>
+
+        <!-- Cron Job: Verificación de configuraciones activas -->
+        <record id="cron_check_active_configs" model="ir.cron">
+            <field name="name">CloudConnect: Check Active Configurations</field>
+            <field name="model_id" ref="model_cloudconnect_config"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_check_active_configs()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">2</field>
+        </record>
+
+        <!-- Cron Job: Procesamiento de webhooks pendientes -->
+        <record id="cron_process_pending_webhooks" model="ir.cron">
+            <field name="name">CloudConnect: Process Pending Webhooks</field>
+            <field name="model_id" ref="model_cloudconnect_webhook"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_process_pending_webhooks()</field>
+            <field name="interval_number">2</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">6</field>
+        </record>
+
+        <!-- Cron Job: Sincronización de propiedades -->
+        <record id="cron_sync_properties" model="ir.cron">
+            <field name="name">CloudConnect: Sync Properties Information</field>
+            <field name="model_id" ref="model_cloudconnect_property"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_sync_properties()</field>
+            <field name="interval_number">6</field>
+            <field name="interval_type">hours</field>
+            <field name="numbercall">-1</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(hours=6)).replace(minute=0, second=0)"/>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">1</field>
+        </record>
+
+        <!-- Cron Job: Validación de configuraciones de webhooks -->
+        <record id="cron_validate_webhook_configs" model="ir.cron">
+            <field name="name">CloudConnect: Validate Webhook Configurations</field>
+            <field name="model_id" ref="model_cloudconnect_webhook"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_validate_webhook_configs()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="nextcall" eval="(DateTime.now() + timedelta(days=1)).replace(hour=1, minute=30, second=0)"/>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">2</field>
+        </record>
+
+        <!-- Cron Job: Verificación de rate limiting -->
+        <record id="cron_check_rate_limiting" model="ir.cron">
+            <field name="name">CloudConnect: Check Rate Limiting Status</field>
+            <field name="model_id" ref="model_cloudconnect_config"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_check_rate_limiting()</field>
+            <field name="interval_number">15</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+            <field name="user_id" ref="base.user_root"/>
+            <field name="priority">7</field>
+        </record>
+
+    </data>
+</odoo>

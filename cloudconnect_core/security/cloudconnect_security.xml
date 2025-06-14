@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+        
+        <!-- Categoría de Seguridad CloudConnect -->
+        <record id="module_category_cloudconnect" model="ir.module.category">
+            <field name="name">CloudConnect</field>
+            <field name="description">CloudConnect Hospitality Integration</field>
+            <field name="sequence">15</field>
+        </record>
+
+        <!-- Grupo Base CloudConnect User -->
+        <record id="group_cloudconnect_user" model="res.groups">
+            <field name="name">CloudConnect User</field>
+            <field name="category_id" ref="module_category_cloudconnect"/>
+            <field name="comment">Basic CloudConnect functionality access</field>
+        </record>
+
+        <!-- Grupo CloudConnect Manager -->
+        <record id="group_cloudconnect_manager" model="res.groups">
+            <field name="name">CloudConnect Manager</field>
+            <field name="category_id" ref="module_category_cloudconnect"/>
+            <field name="implied_ids" eval="[(4, ref('group_cloudconnect_user'))]"/>
+            <field name="comment">Advanced CloudConnect management access</field>
+        </record>
+
+        <!-- Grupo CloudConnect Administrator -->
+        <record id="group_cloudconnect_admin" model="res.groups">
+            <field name="name">CloudConnect Administrator</field>
+            <field name="category_id" ref="module_category_cloudconnect"/>
+            <field name="implied_ids" eval="[(4, ref('group_cloudconnect_manager'))]"/>
+            <field name="comment">Full CloudConnect administration access</field>
+        </record>
+
+        <!-- Reglas de Registro para cloudconnect.config -->
+        <record id="cloudconnect_config_rule_admin" model="ir.rule">
+            <field name="name">CloudConnect Config: Admin Access</field>
+            <field name="model_id" ref="model_cloudconnect_config"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <record id="cloudconnect_config_rule_manager" model="ir.rule">
+            <field name="name">CloudConnect Config: Manager Read Access</field>
+            <field name="model_id" ref="model_cloudconnect_config"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <!-- Reglas de Registro para cloudconnect.property -->
+        <record id="cloudconnect_property_rule_all" model="ir.rule">
+            <field name="name">CloudConnect Property: User Access</field>
+            <field name="model_id" ref="model_cloudconnect_property"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <record id="cloudconnect_property_rule_admin" model="ir.rule">
+            <field name="name">CloudConnect Property: Admin Full Access</field>
+            <field name="model_id" ref="model_cloudconnect_property"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <!-- Reglas de Registro para cloudconnect.webhook -->
+        <record id="cloudconnect_webhook_rule_admin" model="ir.rule">
+            <field name="name">CloudConnect Webhook: Admin Access</field>
+            <field name="model_id" ref="model_cloudconnect_webhook"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <record id="cloudconnect_webhook_rule_manager" model="ir.rule">
+            <field name="name">CloudConnect Webhook: Manager Read Access</field>
+            <field name="model_id" ref="model_cloudconnect_webhook"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <!-- Reglas de Registro para cloudconnect.sync.log -->
+        <record id="cloudconnect_sync_log_rule_all" model="ir.rule">
+            <field name="name">CloudConnect Sync Log: User Read Access</field>
+            <field name="model_id" ref="model_cloudconnect_sync_log"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_user'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="False"/>
+            <field name="perm_create" eval="False"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <record id="cloudconnect_sync_log_rule_manager" model="ir.rule">
+            <field name="name">CloudConnect Sync Log: Manager Write Access</field>
+            <field name="model_id" ref="model_cloudconnect_sync_log"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_manager'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="False"/>
+        </record>
+
+        <record id="cloudconnect_sync_log_rule_admin" model="ir.rule">
+            <field name="name">CloudConnect Sync Log: Admin Full Access</field>
+            <field name="model_id" ref="model_cloudconnect_sync_log"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_admin'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+        <!-- Reglas específicas para datos de empresa -->
+        <record id="cloudconnect_config_company_rule" model="ir.rule">
+            <field name="name">CloudConnect Config: Company Rule</field>
+            <field name="model_id" ref="model_cloudconnect_config"/>
+            <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_user'))]"/>
+        </record>
+
+        <record id="cloudconnect_property_company_rule" model="ir.rule">
+            <field name="name">CloudConnect Property: Company Rule</field>
+            <field name="model_id" ref="model_cloudconnect_property"/>
+            <field name="domain_force">['|', ('company_id', '=', False), ('company_id', 'in', company_ids)]</field>
+            <field name="groups" eval="[(4, ref('group_cloudconnect_user'))]"/>
+        </record>
+
+    </data>
+</odoo>

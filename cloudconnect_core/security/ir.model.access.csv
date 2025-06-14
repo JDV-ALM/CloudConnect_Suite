@@ -1,0 +1,17 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_cloudconnect_config_user,CloudConnect Config User,model_cloudconnect_config,group_cloudconnect_user,1,0,0,0
+access_cloudconnect_config_manager,CloudConnect Config Manager,model_cloudconnect_config,group_cloudconnect_manager,1,1,0,0
+access_cloudconnect_config_admin,CloudConnect Config Admin,model_cloudconnect_config,group_cloudconnect_admin,1,1,1,1
+access_cloudconnect_property_user,CloudConnect Property User,model_cloudconnect_property,group_cloudconnect_user,1,0,0,0
+access_cloudconnect_property_manager,CloudConnect Property Manager,model_cloudconnect_property,group_cloudconnect_manager,1,1,0,0
+access_cloudconnect_property_admin,CloudConnect Property Admin,model_cloudconnect_property,group_cloudconnect_admin,1,1,1,1
+access_cloudconnect_webhook_user,CloudConnect Webhook User,model_cloudconnect_webhook,group_cloudconnect_user,1,0,0,0
+access_cloudconnect_webhook_manager,CloudConnect Webhook Manager,model_cloudconnect_webhook,group_cloudconnect_manager,1,0,0,0
+access_cloudconnect_webhook_admin,CloudConnect Webhook Admin,model_cloudconnect_webhook,group_cloudconnect_admin,1,1,1,1
+access_cloudconnect_sync_log_user,CloudConnect Sync Log User,model_cloudconnect_sync_log,group_cloudconnect_user,1,0,0,0
+access_cloudconnect_sync_log_manager,CloudConnect Sync Log Manager,model_cloudconnect_sync_log,group_cloudconnect_manager,1,1,1,0
+access_cloudconnect_sync_log_admin,CloudConnect Sync Log Admin,model_cloudconnect_sync_log,group_cloudconnect_admin,1,1,1,1
+access_cloudconnect_config_public,CloudConnect Config Public,model_cloudconnect_config,,0,0,0,0
+access_cloudconnect_property_public,CloudConnect Property Public,model_cloudconnect_property,,0,0,0,0
+access_cloudconnect_webhook_public,CloudConnect Webhook Public,model_cloudconnect_webhook,,0,0,0,0
+access_cloudconnect_sync_log_public,CloudConnect Sync Log Public,model_cloudconnect_sync_log,,0,0,0,0
