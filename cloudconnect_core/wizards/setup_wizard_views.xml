@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- CloudConnect Setup Wizard Form View -->
+    <record id="view_cloudconnect_setup_wizard_form" model="ir.ui.view">
+        <field name="name">cloudconnect.setup.wizard.form</field>
+        <field name="model">cloudconnect.setup.wizard</field>
+        <field name="arch" type="xml">
+            <form string="CloudConnect Setup Wizard">
+                <header>
+                    <!-- Navigation Buttons -->
+                    <button name="action_previous_step" type="object" 
+                            string="Previous" class="btn-secondary" icon="fa-arrow-left"
+                            attrs="{'invisible': [('step', '=', 'welcome')]}"/>
+                    <button name="action_next_step" type="object" 
+                            string="Next" class="btn-primary" icon="fa-arrow-right"
+                            attrs="{'invisible': [('step', '=', 'complete')]}"/>
+                    <button name="action_finish_setup" type="object" 
+                            string="Finish Setup" class="btn-success" icon="fa-check"
+                            attrs="{'invisible': [('step', '!=', 'complete')]}"/>
+                    <button name="action_open_dashboard" type="object" 
+                            string="Open Dashboard" class="btn-info" icon="fa-tachometer"
+                            attrs="{'invisible': [('step', '!=', 'complete')]}"/>
+                    
+                    <!-- Progress Indicator -->
+                    <field name="step" widget="statusbar" 
+                           statusbar_visible="welcome,credentials,properties,webhooks,complete"/>
+                </header>
+                
+                <sheet>
+                    <!-- Welcome Step -->
+                    <div attrs="{'invisible': [('step', '!=', 'welcome')]}">
+                        <div class="text-center mb-4">
+                            <h1><i class="fa fa-cloud fa-3x text-primary"/></h1>
+                            <h2>Welcome to CloudConnect</h2>
+                        </div>
+                        <field name="welcome_message" readonly="1"/>
+                        
+                        <div class="alert alert-info mt-4">
+                            <h5><i class="fa fa-info-circle"/> Before You Start</h5>
+                            <p>Make sure you have:</p>
+                            <ul>
+                                <li>Admin access to your Cloudbeds account</li>
+                                <li>Your API credentials (Client ID and Secret)</li>
+                                <li>Permission to configure webhooks</li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Credentials Step -->
+                    <div attrs="{'invisible': [('step', '!=', 'credentials')]}">
+                        <div class="text-center mb-4">
+                            <h2><i class="fa fa-key"/> API Credentials</h2>
+                            <p class="text-muted">Configure your Cloudbeds API connection</p>
+                        </div>
+                        
+                        <group>
+                            <group string="Configuration Details">
+                                <field name="config_name" required="1"/>
+                                <field name="api_endpoint" required="1"/>
+                                <field name="is_tech_partner"/>
+                                <field name="rate_limit_requests" readonly="1"/>
+                            </group>
+                            <group string="OAuth Credentials">
+                                <field name="client_id" required="1" placeholder="Your Cloudbeds Client ID"/>
+                                <field name="client_secret" required="1" password="True" 
+                                       placeholder="Your Cloudbeds Client Secret"/>
+                                <field name="redirect_uri" placeholder="OAuth Redirect URI (optional)"/>
+                            </group>
+                        </group>
+                        
+                        <group string="Token Information (Optional)" 
+                               attrs="{'invisible': [('access_token', '=', False)]}">
+                            <group>
+                                <field name="access_token" password="True"/>
+                                <field name="refresh_token" password="True"/>
+                                <field name="token_expires_in"/>
+                            </group>
+                        </group>
+                        
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <button name="action_test_connection" type="object" 
+                                        string="Test Connection" class="btn btn-primary btn-block" 
+                                        icon="fa-plug"/>
+                            </div>
+                            <div class="col-md-6">
+                                <button name="action_generate_oauth_url" type="object" 
+                                        string="Generate OAuth URL" class="btn btn-info btn-block" 
+                                        icon="fa-external-link"/>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <div class="alert alert-success" 
+                                 attrs="{'invisible': [('connection_status', '!=', 'success')]}">
+                                <h5><i class="fa fa-check-circle"/> Connection Successful</h5>
+                                <field name="connection_message" readonly="1"/>
+                            </div>
+                            <div class="alert alert-danger" 
+                                 attrs="{'invisible': [('connection_status', '!=', 'error')]}">
+                                <h5><i class="fa fa-exclamation-triangle"/> Connection Failed</h5>
+                                <field name="connection_message" readonly="1"/>
+                            </div>
+                            <div class="alert alert-info" 
+                                 attrs="{'invisible': [('connection_status', '!=', 'testing')]}">
+                                <h5><i class="fa fa-spinner fa-spin"/> Testing Connection...</h5>
+                                <p>Please wait while we test your API credentials.</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Properties Step -->
+                    <div attrs="{'invisible': [('step', '!=', 'properties')]}">
+                        <div class="text-center mb-4">
+                            <h2><i class="fa fa-building"/> Properties Setup</h2>
+                            <p class="text-muted">Select which properties to sync</p>
+                        </div>
+                        
+                        <group>
+                            <group string="Available Properties">
+                                <field name="available_properties" widget="text" readonly="1" 
+                                       attrs="{'invisible': [('available_properties', '=', False)]}"/>
+                                <div attrs="{'invisible': [('available_properties', '!=', False)]}" 
+                                     class="text-center text-muted">
+                                    <i class="fa fa-spinner fa-spin"/> Loading properties...
+                                </div>
+                            </group>
+                            <group string="Selection">
+                                <field name="selected_property_ids" 
+                                       placeholder="1234,5678 (comma-separated Property IDs)"/>
+                                <div class="text-muted">
+                                    <small>Enter Property IDs separated by commas, or leave empty to sync all properties.</small>
+                                </div>
+                            </group>
+                        </group>
+                        
+                        <group string="Sync Configuration">
+                            <group>
+                                <field name="auto_sync_enabled"/>
+                                <field name="sync_interval_minutes" 
+                                       attrs="{'invisible': [('auto_sync_enabled', '=', False)]}"/>
+                            </group>
+                            <group>
+                                <div class="alert alert-info">
+                                    <p><strong>Auto-Sync:</strong> Automatically synchronize data at regular intervals.</p>
+                                    <p><strong>Recommended:</strong> 15-30 minutes for most hotels.</p>
+                                </div>
+                            </group>
+                        </group>
+                    </div>
+                    
+                    <!-- Webhooks Step -->
+                    <div attrs="{'invisible': [('step', '!=', 'webhooks')]}">
+                        <div class="text-center mb-4">
+                            <h2><i class="fa fa-bell"/> Webhooks Configuration</h2>
+                            <p class="text-muted">Enable real-time notifications</p>
+                        </div>
+                        
+                        <group>
+                            <group string="Webhook Settings">
+                                <field name="enable_webhooks"/>
+                                <field name="webhook_base_url" readonly="1" 
+                                       attrs="{'invisible': [('enable_webhooks', '=', False)]}"/>
+                            </group>
+                            <group string="Information">
+                                <div class="alert alert-info">
+                                    <h5><i class="fa fa-info-circle"/> About Webhooks</h5>
+                                    <p><strong>Webhooks</strong> provide instant notifications when data changes in Cloudbeds.</p>
+                                    <p><strong>Benefits:</strong></p>
+                                    <ul>
+                                        <li>Real-time data synchronization</li>
+                                        <li>Reduced API calls and better performance</li>
+                                        <li>Immediate updates for reservations and guests</li>
+                                    </ul>
+                                    <p><strong>Recommended:</strong> Enable for all production environments.</p>
+                                </div>
+                            </group>
+                        </group>
+                        
+                        <div attrs="{'invisible': [('enable_webhooks', '=', False)]}">
+                            <h4>Default Webhook Events</h4>
+                            <p>The following webhook events will be automatically configured:</p>
+                            <ul class="list-group">
+                                <li class="list-group-item">
+                                    <strong>Reservation Created:</strong> New reservations
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Reservation Status Changed:</strong> Check-ins, check-outs, cancellations
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Guest Created:</strong> New guest profiles
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Guest Details Changed:</strong> Guest information updates
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Transaction Created:</strong> New payments and charges
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Complete Step -->
+                    <div attrs="{'invisible': [('step', '!=', 'complete')]}">
+                        <div class="text-center mb-4">
+                            <h1><i class="fa fa-check-circle fa-3x text-success"/></h1>
+                            <h2>Setup Complete!</h2>
+                            <p class="text-muted">Your CloudConnect integration is ready</p>
+                        </div>
+                        
+                        <field name="setup_summary" readonly="1"/>
+                        
+                        <div class="row mt-4">
+                            <div class="col-md-6">
+                                <div class="card border-primary">
+                                    <div class="card-body text-center">
+                                        <h5><i class="fa fa-tachometer"/> Dashboard</h5>
+                                        <p>Monitor your integration status and performance</p>
+                                        <button name="action_open_dashboard" type="object" 
+                                                class="btn btn-primary">Open Dashboard</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card border-success">
+                                    <div class="card-body text-center">
+                                        <h5><i class="fa fa-building"/> Properties</h5>
+                                        <p>Manage your hotel properties and sync settings</p>
+                                        <button name="%(action_cloudconnect_property)d" type="action" 
+                                                class="btn btn-success">View Properties</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Setup Wizard Action -->
+    <record id="action_cloudconnect_setup_wizard" model="ir.actions.act_window">
+        <field name="name">CloudConnect Setup Wizard</field>
+        <field name="res_model">cloudconnect.setup.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_cloudconnect_setup_wizard_form"/>
+        <field name="target">new</field>
+        <field name="context">{}</field>
+    </record>
+
+</odoo>

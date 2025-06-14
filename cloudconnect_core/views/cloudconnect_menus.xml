@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Main CloudConnect Menu -->
+    <menuitem id="menu_cloudconnect_root"
+              name="CloudConnect"
+              sequence="90"
+              web_icon="cloudconnect_core,static/description/icon.png"/>
+
+    <!-- Dashboard -->
+    <menuitem id="menu_cloudconnect_dashboard"
+              name="Dashboard"
+              parent="menu_cloudconnect_root"
+              action="action_cloudconnect_dashboard"
+              sequence="10"/>
+
+    <!-- Configuration Menu -->
+    <menuitem id="menu_cloudconnect_configuration"
+              name="Configuration"
+              parent="menu_cloudconnect_root"
+              sequence="90"/>
+
+    <!-- Configurations -->
+    <menuitem id="menu_cloudconnect_configs"
+              name="Configurations"
+              parent="menu_cloudconnect_configuration"
+              action="action_cloudconnect_config"
+              sequence="10"/>
+
+    <!-- Properties -->
+    <menuitem id="menu_cloudconnect_properties"
+              name="Properties"
+              parent="menu_cloudconnect_configuration"
+              action="action_cloudconnect_property"
+              sequence="20"/>
+
+    <!-- Webhooks -->
+    <menuitem id="menu_cloudconnect_webhooks"
+              name="Webhooks"
+              parent="menu_cloudconnect_configuration"
+              action="action_cloudconnect_webhook"
+              sequence="30"/>
+
+    <!-- Monitoring Menu -->
+    <menuitem id="menu_cloudconnect_monitoring"
+              name="Monitoring"
+              parent="menu_cloudconnect_root"
+              sequence="80"/>
+
+    <!-- Sync Logs -->
+    <menuitem id="menu_cloudconnect_sync_logs"
+              name="Sync Logs"
+              parent="menu_cloudconnect_monitoring"
+              action="action_cloudconnect_sync_log"
+              sequence="10"/>
+
+    <!-- Setup Wizard Action -->
+    <record id="action_cloudconnect_setup_wizard" model="ir.actions.act_window">
+        <field name="name">CloudConnect Setup Wizard</field>
+        <field name="res_model">cloudconnect.setup.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="view_id" ref="view_cloudconnect_setup_wizard_form"/>
+    </record>
+
+    <!-- Setup Menu Item (only shown to admin) -->
+    <menuitem id="menu_cloudconnect_setup"
+              name="Setup Wizard"
+              parent="menu_cloudconnect_configuration"
+              action="action_cloudconnect_setup_wizard"
+              sequence="100"
+              groups="base.group_system"/>
+</odoo>

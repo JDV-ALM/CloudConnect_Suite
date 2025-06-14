@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- CloudConnect Configuration Tree View -->
+    <record id="view_cloudconnect_config_tree" model="ir.ui.view">
+        <field name="name">cloudconnect.config.tree</field>
+        <field name="model">cloudconnect.config</field>
+        <field name="arch" type="xml">
+            <tree string="CloudConnect Configurations" decoration-success="connection_status=='connected'" 
+                  decoration-warning="connection_status=='expired'" decoration-danger="connection_status=='error'">
+                <field name="sequence" widget="handle"/>
+                <field name="name"/>
+                <field name="api_endpoint"/>
+                <field name="property_count"/>
+                <field name="connection_status" widget="badge" 
+                       decoration-success="connection_status=='connected'"
+                       decoration-warning="connection_status=='expired'"
+                       decoration-danger="connection_status=='error'"
+                       decoration-info="connection_status=='disconnected'"/>
+                <field name="last_connection_test"/>
+                <field name="sync_enabled" widget="boolean_toggle"/>
+                <field name="active" widget="boolean_toggle"/>
+                <button name="action_test_connection" type="object" 
+                        string="Test Connection" icon="fa-plug" 
+                        class="btn-primary" title="Test API Connection"/>
+                <button name="action_refresh_token" type="object" 
+                        string="Refresh Token" icon="fa-refresh" 
+                        class="btn-secondary" title="Refresh Access Token"/>
+            </tree>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Configuration Form View -->
+    <record id="view_cloudconnect_config_form" model="ir.ui.view">
+        <field name="name">cloudconnect.config.form</field>
+        <field name="model">cloudconnect.config</field>
+        <field name="arch" type="xml">
+            <form string="CloudConnect Configuration">
+                <header>
+                    <button name="action_test_connection" type="object" 
+                            string="Test Connection" class="btn-primary" icon="fa-plug"/>
+                    <button name="action_refresh_token" type="object" 
+                            string="Refresh Token" class="btn-secondary" icon="fa-refresh"/>
+                    <field name="connection_status" widget="statusbar" 
+                           statusbar_visible="disconnected,connected,error,expired"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="%(action_cloudconnect_property)d" type="action"
+                                class="oe_stat_button" icon="fa-building">
+                            <field name="property_count" string="Properties" widget="statinfo"/>
+                        </button>
+                    </div>
+                    
+                    <widget name="web_ribbon" title="Inactive" bg_color="bg-danger" 
+                            attrs="{'invisible': [('active', '=', True)]}"/>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Configuration Name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group name="basic_info" string="Basic Information">
+                            <field name="sequence"/>
+                            <field name="active"/>
+                            <field name="api_endpoint"/>
+                        </group>
+                        <group name="connection_info" string="Connection Status">
+                            <field name="connection_status"/>
+                            <field name="last_connection_test"/>
+                            <field name="connection_error" attrs="{'invisible': [('connection_error', '=', False)]}"
+                                   widget="text"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="API Credentials" name="credentials">
+                            <group>
+                                <group string="OAuth Configuration">
+                                    <field name="client_id"/>
+                                    <field name="client_secret_encrypted" password="True" 
+                                           placeholder="Enter Client Secret"/>
+                                </group>
+                                <group string="Token Information">
+                                    <field name="access_token_encrypted" password="True" readonly="1"/>
+                                    <field name="refresh_token_encrypted" password="True" readonly="1"/>
+                                    <field name="token_expires_at" readonly="1"/>
+                                </group>
+                            </group>
+                            <div class="alert alert-info" role="alert">
+                                <strong>Security Note:</strong> All sensitive data is encrypted in the database.
+                                Tokens are automatically refreshed before expiration.
+                            </div>
+                        </page>
+                        
+                        <page string="Rate Limiting" name="rate_limiting">
+                            <group>
+                                <group string="Rate Limits">
+                                    <field name="rate_limit_requests"/>
+                                    <field name="rate_limit_burst"/>
+                                </group>
+                                <group string="Information">
+                                    <div class="alert alert-info">
+                                        <p><strong>Standard Accounts:</strong> 5 requests per second</p>
+                                        <p><strong>Tech Partners:</strong> 10 requests per second</p>
+                                        <p>Burst tolerance allows temporary spikes above the limit.</p>
+                                    </div>
+                                </group>
+                            </group>
+                        </page>
+                        
+                        <page string="Sync Settings" name="sync">
+                            <group>
+                                <group string="Synchronization">
+                                    <field name="sync_enabled"/>
+                                    <field name="sync_interval_minutes" 
+                                           attrs="{'invisible': [('sync_enabled', '=', False)]}"/>
+                                </group>
+                                <group string="Automation">
+                                    <div class="alert alert-warning" 
+                                         attrs="{'invisible': [('sync_enabled', '=', True)]}">
+                                        <strong>Sync Disabled:</strong> Automatic synchronization is disabled.
+                                        You can still perform manual syncs.
+                                    </div>
+                                    <div attrs="{'invisible': [('sync_enabled', '=', False)]}">
+                                        <p>Automatic sync every <field name="sync_interval_minutes" class="oe_inline"/> minutes</p>
+                                    </div>
+                                </group>
+                            </group>
+                        </page>
+                        
+                        <page string="Properties" name="properties">
+                            <field name="property_ids" context="{'default_config_id': active_id}">
+                                <tree editable="bottom">
+                                    <field name="cloudbeds_id"/>
+                                    <field name="name"/>
+                                    <field name="city"/>
+                                    <field name="sync_enabled" widget="boolean_toggle"/>
+                                    <field name="last_sync_status" widget="badge"/>
+                                    <field name="last_sync_date"/>
+                                </tree>
+                            </field>
+                        </page>
+                        
+                        <page string="Webhooks" name="webhooks">
+                            <field name="webhook_ids" context="{'default_config_id': active_id}">
+                                <tree>
+                                    <field name="property_id"/>
+                                    <field name="event_type"/>
+                                    <field name="status" widget="badge"/>
+                                    <field name="last_received"/>
+                                    <field name="total_events_received"/>
+                                    <button name="action_test_webhook" type="object" 
+                                            string="Test" icon="fa-play" class="btn-sm"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Configuration Kanban View -->
+    <record id="view_cloudconnect_config_kanban" model="ir.ui.view">
+        <field name="name">cloudconnect.config.kanban</field>
+        <field name="model">cloudconnect.config</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile">
+                <field name="name"/>
+                <field name="connection_status"/>
+                <field name="property_count"/>
+                <field name="last_connection_test"/>
+                <field name="sync_enabled"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="row">
+                                    <div class="col-8">
+                                        <strong><field name="name"/></strong>
+                                    </div>
+                                    <div class="col-4 text-right">
+                                        <span t-attf-class="badge #{record.connection_status.raw_value === 'connected' ? 'badge-success' : record.connection_status.raw_value === 'error' ? 'badge-danger' : 'badge-warning'}">
+                                            <field name="connection_status"/>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <i class="fa fa-building"/> <field name="property_count"/> Properties
+                                    </div>
+                                    <div class="col-6">
+                                        <i class="fa fa-sync"/> 
+                                        <span t-if="record.sync_enabled.raw_value">Enabled</span>
+                                        <span t-else="">Disabled</span>
+                                    </div>
+                                </div>
+                                <div class="row mt-1" t-if="record.last_connection_test.raw_value">
+                                    <div class="col-12 text-muted">
+                                        <small>Last test: <field name="last_connection_test"/></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Configuration Search View -->
+    <record id="view_cloudconnect_config_search" model="ir.ui.view">
+        <field name="name">cloudconnect.config.search</field>
+        <field name="model">cloudconnect.config</field>
+        <field name="arch" type="xml">
+            <search string="CloudConnect Configurations">
+                <field name="name" string="Configuration" 
+                       filter_domain="[('name', 'ilike', self)]"/>
+                <field name="api_endpoint" string="API Endpoint"/>
+                <field name="client_id" string="Client ID"/>
+                
+                <filter string="Active" name="active" 
+                        domain="[('active', '=', True)]"/>
+                <filter string="Inactive" name="inactive" 
+                        domain="[('active', '=', False)]"/>
+                <separator/>
+                <filter string="Connected" name="connected" 
+                        domain="[('connection_status', '=', 'connected')]"/>
+                <filter string="Disconnected" name="disconnected" 
+                        domain="[('connection_status', '=', 'disconnected')]"/>
+                <filter string="Error" name="error" 
+                        domain="[('connection_status', '=', 'error')]"/>
+                <filter string="Token Expired" name="expired" 
+                        domain="[('connection_status', '=', 'expired')]"/>
+                <separator/>
+                <filter string="Sync Enabled" name="sync_enabled" 
+                        domain="[('sync_enabled', '=', True)]"/>
+                <filter string="Sync Disabled" name="sync_disabled" 
+                        domain="[('sync_enabled', '=', False)]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter string="Connection Status" name="group_status" 
+                            context="{'group_by': 'connection_status'}"/>
+                    <filter string="Sync Status" name="group_sync" 
+                            context="{'group_by': 'sync_enabled'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Configuration Action -->
+    <record id="action_cloudconnect_config" model="ir.actions.act_window">
+        <field name="name">CloudConnect Configurations</field>
+        <field name="res_model">cloudconnect.config</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="view_id" ref="view_cloudconnect_config_kanban"/>
+        <field name="search_view_id" ref="view_cloudconnect_config_search"/>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first CloudConnect configuration!
+            </p>
+            <p>
+                Configure your Cloudbeds API credentials to start syncing data between 
+                Cloudbeds and Odoo. Use the Setup Wizard for a guided configuration process.
+            </p>
+        </field>
+    </record>
+
+</odoo>

@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- CloudConnect Sync Log Tree View -->
+    <record id="view_cloudconnect_sync_log_tree" model="ir.ui.view">
+        <field name="name">cloudconnect.sync_log.tree</field>
+        <field name="model">cloudconnect.sync_log</field>
+        <field name="arch" type="xml">
+            <tree string="CloudConnect Sync Logs" decoration-success="status=='success'" 
+                  decoration-warning="status=='partial'" decoration-danger="status=='error'"
+                  decoration-info="status in ['pending', 'processing']" decoration-muted="status=='skipped'">
+                <field name="sync_date"/>
+                <field name="property_id"/>
+                <field name="operation_type"/>
+                <field name="model_name"/>
+                <field name="cloudbeds_id"/>
+                <field name="status" widget="badge" 
+                       decoration-success="status=='success'"
+                       decoration-warning="status=='partial'"
+                       decoration-danger="status=='error'"
+                       decoration-info="status in ['pending', 'processing']"
+                       decoration-muted="status=='skipped'"/>
+                <field name="duration_ms" optional="hide"/>
+                <field name="retry_count" optional="hide"/>
+                <field name="error_message" optional="hide"/>
+                <field name="request_id" optional="hide"/>
+                <button name="action_retry_sync" type="object" 
+                        string="Retry" icon="fa-refresh" 
+                        class="btn-primary btn-sm" title="Retry Sync"
+                        attrs="{'invisible': [('is_retriable', '=', False)]}"/>
+                <button name="action_view_related_record" type="object" 
+                        string="View Record" icon="fa-external-link" 
+                        class="btn-secondary btn-sm" title="View Related Record"
+                        attrs="{'invisible': [('odoo_record_id', '=', False)]}"/>
+                <button name="action_view_request_details" type="object" 
+                        string="Details" icon="fa-info-circle" 
+                        class="btn-info btn-sm" title="View Request Details"/>
+            </tree>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Sync Log Form View -->
+    <record id="view_cloudconnect_sync_log_form" model="ir.ui.view">
+        <field name="name">cloudconnect.sync_log.form</field>
+        <field name="model">cloudconnect.sync_log</field>
+        <field name="arch" type="xml">
+            <form string="CloudConnect Sync Log" create="false" edit="false">
+                <header>
+                    <button name="action_retry_sync" type="object" 
+                            string="Retry Sync" class="btn-primary" icon="fa-refresh"
+                            attrs="{'invisible': [('is_retriable', '=', False)]}"/>
+                    <button name="action_view_related_record" type="object" 
+                            string="View Related Record" class="btn-secondary" icon="fa-external-link"
+                            attrs="{'invisible': [('odoo_record_id', '=', False)]}"/>
+                    <field name="status" widget="statusbar"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_related_record" type="object"
+                                class="oe_stat_button" icon="fa-external-link"
+                                attrs="{'invisible': [('odoo_record_id', '=', False)]}">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Related</span>
+                                <span class="o_stat_text">Record</span>
+                            </div>
+                        </button>
+                    </div>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="display_name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group name="basic_info" string="Basic Information">
+                            <field name="property_id"/>
+                            <field name="config_id"/>
+                            <field name="operation_type"/>
+                            <field name="model_name"/>
+                            <field name="cloudbeds_id"/>
+                            <field name="odoo_record_id"/>
+                        </group>
+                        <group name="timing" string="Timing">
+                            <field name="sync_date"/>
+                            <field name="started_at"/>
+                            <field name="completed_at"/>
+                            <field name="duration_ms" widget="integer"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Status &amp; Error" name="status">
+                            <group>
+                                <group string="Status Information">
+                                    <field name="status"/>
+                                    <field name="sync_direction"/>
+                                    <field name="source_system"/>
+                                    <field name="user_id"/>
+                                </group>
+                                <group string="Error Handling" 
+                                       attrs="{'invisible': [('status', 'not in', ['error', 'retry'])]}">
+                                    <field name="retry_count"/>
+                                    <field name="max_retries"/>
+                                    <field name="next_retry_at"/>
+                                    <field name="is_retriable"/>
+                                </group>
+                            </group>
+                            
+                            <group string="Error Details" 
+                                   attrs="{'invisible': [('error_message', '=', False)]}">
+                                <field name="error_message" widget="text" nolabel="1"/>
+                                <field name="error_code" attrs="{'invisible': [('error_code', '=', False)]}"/>
+                            </group>
+                            
+                            <div class="alert alert-danger" role="alert" 
+                                 attrs="{'invisible': [('status', '!=', 'error')]}">
+                                <h5><i class="fa fa-exclamation-triangle"/> Sync Error</h5>
+                                <p><strong>Error Message:</strong> <field name="error_message" readonly="1"/></p>
+                                <p t-if="record.error_code.raw_value"><strong>Error Code:</strong> <field name="error_code" readonly="1"/></p>
+                                <p><strong>Retry Count:</strong> <field name="retry_count" readonly="1"/> / <field name="max_retries" readonly="1"/></p>
+                                <div t-if="record.is_retriable.raw_value">
+                                    <button name="action_retry_sync" type="object" 
+                                            string="Retry Now" class="btn btn-warning"/>
+                                </div>
+                            </div>
+                            
+                            <div class="alert alert-success" role="alert" 
+                                 attrs="{'invisible': [('status', '!=', 'success')]}">
+                                <h5><i class="fa fa-check-circle"/> Sync Successful</h5>
+                                <p>Operation completed successfully in <field name="duration_ms" readonly="1"/> ms.</p>
+                            </div>
+                        </page>
+                        
+                        <page string="Request Details" name="request">
+                            <group>
+                                <group string="API Request">
+                                    <field name="request_id"/>
+                                    <field name="api_endpoint"/>
+                                    <field name="request_method"/>
+                                    <field name="http_status_code"/>
+                                </group>
+                                <group string="Batch Information" 
+                                       attrs="{'invisible': [('batch_id', '=', False)]}">
+                                    <field name="batch_id"/>
+                                    <field name="batch_size"/>
+                                    <field name="batch_sequence"/>
+                                </group>
+                            </group>
+                            
+                            <group string="Request Data" 
+                                   attrs="{'invisible': [('request_data', '=', False)]}">
+                                <field name="request_data" widget="ace" options="{'mode': 'json'}" nolabel="1"/>
+                            </group>
+                            
+                            <group string="Response Data" 
+                                   attrs="{'invisible': [('response_data', '=', False)]}">
+                                <field name="response_data" widget="ace" options="{'mode': 'json'}" nolabel="1"/>
+                            </group>
+                        </page>
+                        
+                        <page string="Webhook" name="webhook" 
+                              attrs="{'invisible': [('webhook_id', '=', False)]}">
+                            <group>
+                                <group string="Webhook Information">
+                                    <field name="webhook_id"/>
+                                    <field name="event_type"/>
+                                </group>
+                            </group>
+                            
+                            <group string="Event Data" 
+                                   attrs="{'invisible': [('event_data', '=', False)]}">
+                                <field name="event_data" widget="ace" options="{'mode': 'json'}" nolabel="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Sync Log Kanban View -->
+    <record id="view_cloudconnect_sync_log_kanban" model="ir.ui.view">
+        <field name="name">cloudconnect.sync_log.kanban</field>
+        <field name="model">cloudconnect.sync_log</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile" default_group_by="status">
+                <field name="display_name"/>
+                <field name="property_id"/>
+                <field name="operation_type"/>
+                <field name="model_name"/>
+                <field name="status"/>
+                <field name="sync_date"/>
+                <field name="duration_ms"/>
+                <field name="error_message"/>
+                <field name="retry_count"/>
+                <field name="is_retriable"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="row">
+                                    <div class="col-8">
+                                        <strong><field name="model_name"/></strong>
+                                        <br/>
+                                        <span class="text-muted"><field name="property_id"/></span>
+                                    </div>
+                                    <div class="col-4 text-right">
+                                        <span t-attf-class="badge #{record.status.raw_value === 'success' ? 'badge-success' : record.status.raw_value === 'error' ? 'badge-danger' : record.status.raw_value === 'partial' ? 'badge-warning' : 'badge-info'}">
+                                            <field name="status"/>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <i class="fa fa-cogs"/> <field name="operation_type"/>
+                                    </div>
+                                    <div class="col-6 text-right" t-if="record.duration_ms.raw_value > 0">
+                                        <i class="fa fa-clock-o"/> <field name="duration_ms"/>ms
+                                    </div>
+                                </div>
+                                <div class="row mt-1" t-if="record.retry_count.raw_value > 0">
+                                    <div class="col-12">
+                                        <span class="badge badge-warning">
+                                            <i class="fa fa-refresh"/> 
+                                            Retry <field name="retry_count"/>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-1">
+                                    <div class="col-12 text-muted">
+                                        <small><field name="sync_date"/></small>
+                                    </div>
+                                </div>
+                                <div class="row mt-1" t-if="record.error_message.raw_value and record.status.raw_value === 'error'">
+                                    <div class="col-12">
+                                        <small class="text-danger">
+                                            <i class="fa fa-exclamation-triangle"/> 
+                                            <t t-esc="record.error_message.raw_value.substring(0, 50)"/>...
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Sync Log Search View -->
+    <record id="view_cloudconnect_sync_log_search" model="ir.ui.view">
+        <field name="name">cloudconnect.sync_log.search</field>
+        <field name="model">cloudconnect.sync_log</field>
+        <field name="arch" type="xml">
+            <search string="CloudConnect Sync Logs">
+                <field name="property_id" string="Property"/>
+                <field name="model_name" string="Model"/>
+                <field name="cloudbeds_id" string="Cloudbeds ID"/>
+                <field name="request_id" string="Request ID"/>
+                <field name="batch_id" string="Batch ID"/>
+                
+                <filter string="Success" name="success" 
+                        domain="[('status', '=', 'success')]"/>
+                <filter string="Error" name="error" 
+                        domain="[('status', '=', 'error')]"/>
+                <filter string="Partial" name="partial" 
+                        domain="[('status', '=', 'partial')]"/>
+                <filter string="Pending" name="pending" 
+                        domain="[('status', 'in', ['pending', 'processing'])]"/>
+                <filter string="Retriable" name="retriable" 
+                        domain="[('is_retriable', '=', True)]"/>
+                <separator/>
+                <filter string="Manual" name="manual" 
+                        domain="[('operation_type', '=', 'manual')]"/>
+                <filter string="Automatic" name="automatic" 
+                        domain="[('operation_type', '=', 'automatic')]"/>
+                <filter string="Webhook" name="webhook" 
+                        domain="[('operation_type', '=', 'webhook')]"/>
+                <filter string="Cron" name="cron" 
+                        domain="[('operation_type', '=', 'cron')]"/>
+                <separator/>
+                <filter string="Today" name="today" 
+                        domain="[('sync_date', '&gt;=', context_today())]"/>
+                <filter string="Last 7 Days" name="last_week" 
+                        domain="[('sync_date', '&gt;=', (context_today() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter string="Last 30 Days" name="last_month" 
+                        domain="[('sync_date', '&gt;=', (context_today() - datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter string="Property" name="group_property" 
+                            context="{'group_by': 'property_id'}"/>
+                    <filter string="Status" name="group_status" 
+                            context="{'group_by': 'status'}"/>
+                    <filter string="Operation Type" name="group_operation" 
+                            context="{'group_by': 'operation_type'}"/>
+                    <filter string="Model" name="group_model" 
+                            context="{'group_by': 'model_name'}"/>
+                    <filter string="Sync Date" name="group_date" 
+                            context="{'group_by': 'sync_date:day'}"/>
+                    <filter string="Batch" name="group_batch" 
+                            context="{'group_by': 'batch_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Sync Log Action -->
+    <record id="action_cloudconnect_sync_log" model="ir.actions.act_window">
+        <field name="name">CloudConnect Sync Logs</field>
+        <field name="res_model">cloudconnect.sync_log</field>
+        <field name="view_mode">tree,kanban,form</field>
+        <field name="view_id" ref="view_cloudconnect_sync_log_tree"/>
+        <field name="search_view_id" ref="view_cloudconnect_sync_log_search"/>
+        <field name="context">{'search_default_last_week': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No sync logs yet!
+            </p>
+            <p>
+                Sync logs will appear here once you start synchronizing data between 
+                Cloudbeds and Odoo. Use the filters to find specific logs or troubleshoot issues.
+            </p>
+        </field>
+    </record>
+
+</odoo>

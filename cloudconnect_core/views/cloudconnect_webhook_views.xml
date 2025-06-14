@@ -1,0 +1,315 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- CloudConnect Webhook Tree View -->
+    <record id="view_cloudconnect_webhook_tree" model="ir.ui.view">
+        <field name="name">cloudconnect.webhook.tree</field>
+        <field name="model">cloudconnect.webhook</field>
+        <field name="arch" type="xml">
+            <tree string="CloudConnect Webhooks" decoration-success="status=='active'" 
+                  decoration-danger="status=='error'" decoration-muted="active==False">
+                <field name="property_id"/>
+                <field name="event_type"/>
+                <field name="status" widget="badge" 
+                       decoration-success="status=='active'"
+                       decoration-danger="status=='error'"
+                       decoration-muted="status=='inactive'"/>
+                <field name="last_received"/>
+                <field name="total_events_received"/>
+                <field name="total_events_processed"/>
+                <field name="total_events_failed"/>
+                <field name="error_count"/>
+                <field name="active" widget="boolean_toggle"/>
+                <button name="action_register_webhook" type="object" 
+                        string="Register" icon="fa-plug" 
+                        class="btn-primary" title="Register with Cloudbeds"
+                        attrs="{'invisible': [('cloudbeds_subscription_id', '!=', False)]}"/>
+                <button name="action_test_webhook" type="object" 
+                        string="Test" icon="fa-play" 
+                        class="btn-secondary" title="Test Webhook"/>
+            </tree>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Webhook Form View -->
+    <record id="view_cloudconnect_webhook_form" model="ir.ui.view">
+        <field name="name">cloudconnect.webhook.form</field>
+        <field name="model">cloudconnect.webhook</field>
+        <field name="arch" type="xml">
+            <form string="CloudConnect Webhook">
+                <header>
+                    <button name="action_register_webhook" type="object" 
+                            string="Register with Cloudbeds" class="btn-primary" icon="fa-plug"
+                            attrs="{'invisible': [('cloudbeds_subscription_id', '!=', False)]}"/>
+                    <button name="action_test_webhook" type="object" 
+                            string="Test Webhook" class="btn-secondary" icon="fa-play"/>
+                    <field name="status" widget="statusbar" 
+                           statusbar_visible="active,inactive,error"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" title="Inactive" bg_color="bg-danger" 
+                            attrs="{'invisible': [('active', '=', True)]}"/>
+                    <widget name="web_ribbon" title="Error" bg_color="bg-danger" 
+                            attrs="{'invisible': [('status', '!=', 'error')]}"/>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="display_name"/>
+                        </h1>
+                    </div>
+                    
+                    <group>
+                        <group name="basic_info" string="Basic Information">
+                            <field name="config_id"/>
+                            <field name="property_id" 
+                                   domain="[('config_id', '=', config_id)]"/>
+                            <field name="event_type"/>
+                            <field name="active"/>
+                        </group>
+                        <group name="webhook_info" string="Webhook Details">
+                            <field name="endpoint_url" readonly="1" widget="url"/>
+                            <field name="secret_key" password="True"/>
+                            <field name="status"/>
+                            <field name="cloudbeds_subscription_id" readonly="1"/>
+                            <field name="registered_at" readonly="1"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Statistics" name="statistics">
+                            <group>
+                                <group string="Event Statistics">
+                                    <field name="total_events_received" readonly="1"/>
+                                    <field name="total_events_processed" readonly="1"/>
+                                    <field name="total_events_failed" readonly="1"/>
+                                    <field name="last_received" readonly="1"/>
+                                </group>
+                                <group string="Performance">
+                                    <field name="error_count" readonly="1"/>
+                                    <field name="max_retries"/>
+                                    <field name="retry_delay"/>
+                                    <field name="last_error" readonly="1" widget="text"
+                                           attrs="{'invisible': [('last_error', '=', False)]}"/>
+                                </group>
+                            </group>
+                            
+                            <div class="row mt-3">
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title text-success">
+                                                <field name="total_events_processed"/>
+                                            </h5>
+                                            <p class="card-text">Events Processed</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title text-primary">
+                                                <field name="total_events_received"/>
+                                            </h5>
+                                            <p class="card-text">Events Received</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card">
+                                        <div class="card-body text-center">
+                                            <h5 class="card-title text-danger">
+                                                <field name="total_events_failed"/>
+                                            </h5>
+                                            <p class="card-text">Events Failed</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </page>
+                        
+                        <page string="Configuration" name="configuration">
+                            <group>
+                                <group string="Event Processing">
+                                    <label for="event_type"/>
+                                    <div>
+                                        <field name="event_type"/>
+                                        <div class="text-muted">
+                                            <small>
+                                                Select the type of event this webhook should listen for.
+                                                Each webhook can only listen to one event type.
+                                            </small>
+                                        </div>
+                                    </div>
+                                </group>
+                                <group string="Error Handling">
+                                    <field name="max_retries"/>
+                                    <field name="retry_delay"/>
+                                </group>
+                            </group>
+                            
+                            <group string="Webhook URL Information">
+                                <div class="alert alert-info">
+                                    <h5>Webhook Endpoint</h5>
+                                    <p>This is the URL that Cloudbeds will call when the event occurs:</p>
+                                    <code><field name="endpoint_url" readonly="1"/></code>
+                                    <br/><br/>
+                                    <p><strong>Security:</strong> Webhooks are secured using HMAC-SHA256 signatures.</p>
+                                    <p><strong>Secret Key:</strong> <code>[Hidden for security]</code></p>
+                                </div>
+                            </group>
+                        </page>
+                        
+                        <page string="Error Log" name="error_log" 
+                              attrs="{'invisible': [('last_error', '=', False)]}">
+                            <group>
+                                <field name="last_error" readonly="1" widget="text" nolabel="1"/>
+                            </group>
+                            
+                            <div class="alert alert-danger" role="alert">
+                                <h5>Last Error Details</h5>
+                                <p><strong>Error Count:</strong> <field name="error_count" readonly="1"/></p>
+                                <p><strong>Error Message:</strong></p>
+                                <pre><field name="last_error" readonly="1"/></pre>
+                                <button name="action_register_webhook" type="object" 
+                                        string="Re-register Webhook" class="btn btn-warning"
+                                        attrs="{'invisible': [('status', '!=', 'error')]}"/>
+                            </div>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Webhook Kanban View -->
+    <record id="view_cloudconnect_webhook_kanban" model="ir.ui.view">
+        <field name="name">cloudconnect.webhook.kanban</field>
+        <field name="model">cloudconnect.webhook</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile" default_group_by="event_type">
+                <field name="display_name"/>
+                <field name="property_id"/>
+                <field name="event_type"/>
+                <field name="status"/>
+                <field name="last_received"/>
+                <field name="total_events_received"/>
+                <field name="total_events_failed"/>
+                <field name="error_count"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="row">
+                                    <div class="col-8">
+                                        <strong><field name="property_id"/></strong>
+                                        <br/>
+                                        <span class="text-muted"><field name="event_type"/></span>
+                                    </div>
+                                    <div class="col-4 text-right">
+                                        <span t-attf-class="badge #{record.status.raw_value === 'active' ? 'badge-success' : record.status.raw_value === 'error' ? 'badge-danger' : 'badge-secondary'}">
+                                            <field name="status"/>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <i class="fa fa-check-circle text-success"/> 
+                                        <field name="total_events_received"/> received
+                                    </div>
+                                    <div class="col-6 text-right" t-if="record.total_events_failed.raw_value > 0">
+                                        <i class="fa fa-times-circle text-danger"/> 
+                                        <field name="total_events_failed"/> failed
+                                    </div>
+                                </div>
+                                <div class="row mt-1" t-if="record.error_count.raw_value > 0">
+                                    <div class="col-12">
+                                        <span class="badge badge-warning">
+                                            <i class="fa fa-exclamation-triangle"/> 
+                                            <field name="error_count"/> recent errors
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-1" t-if="record.last_received.raw_value">
+                                    <div class="col-12 text-muted">
+                                        <small>Last event: <field name="last_received"/></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Webhook Search View -->
+    <record id="view_cloudconnect_webhook_search" model="ir.ui.view">
+        <field name="name">cloudconnect.webhook.search</field>
+        <field name="model">cloudconnect.webhook</field>
+        <field name="arch" type="xml">
+            <search string="CloudConnect Webhooks">
+                <field name="property_id" string="Property"/>
+                <field name="event_type" string="Event Type"/>
+                <field name="config_id" string="Configuration"/>
+                
+                <filter string="Active" name="active" 
+                        domain="[('active', '=', True)]"/>
+                <filter string="Inactive" name="inactive" 
+                        domain="[('active', '=', False)]"/>
+                <separator/>
+                <filter string="Status: Active" name="status_active" 
+                        domain="[('status', '=', 'active')]"/>
+                <filter string="Status: Error" name="status_error" 
+                        domain="[('status', '=', 'error')]"/>
+                <filter string="Status: Inactive" name="status_inactive" 
+                        domain="[('status', '=', 'inactive')]"/>
+                <separator/>
+                <filter string="Has Errors" name="has_errors" 
+                        domain="[('error_count', '>', 0)]"/>
+                <filter string="Registered" name="registered" 
+                        domain="[('cloudbeds_subscription_id', '!=', False)]"/>
+                <filter string="Not Registered" name="not_registered" 
+                        domain="[('cloudbeds_subscription_id', '=', False)]"/>
+                <separator/>
+                <filter string="Recent Activity" name="recent_activity" 
+                        domain="[('last_received', '>=', (context_today() - datetime.timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S'))]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter string="Property" name="group_property" 
+                            context="{'group_by': 'property_id'}"/>
+                    <filter string="Event Type" name="group_event_type" 
+                            context="{'group_by': 'event_type'}"/>
+                    <filter string="Status" name="group_status" 
+                            context="{'group_by': 'status'}"/>
+                    <filter string="Configuration" name="group_config" 
+                            context="{'group_by': 'config_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Webhook Action -->
+    <record id="action_cloudconnect_webhook" model="ir.actions.act_window">
+        <field name="name">CloudConnect Webhooks</field>
+        <field name="res_model">cloudconnect.webhook</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="view_id" ref="view_cloudconnect_webhook_kanban"/>
+        <field name="search_view_id" ref="view_cloudconnect_webhook_search"/>
+        <field name="context">{'search_default_active': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Configure your first webhook!
+            </p>
+            <p>
+                Webhooks provide real-time notifications when events occur in Cloudbeds. 
+                Configure webhooks to automatically sync data changes without waiting for scheduled syncs.
+            </p>
+        </field>
+    </record>
+
+</odoo>

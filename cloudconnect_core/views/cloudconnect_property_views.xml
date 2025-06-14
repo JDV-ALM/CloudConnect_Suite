@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- CloudConnect Property Tree View -->
+    <record id="view_cloudconnect_property_tree" model="ir.ui.view">
+        <field name="name">cloudconnect.property.tree</field>
+        <field name="model">cloudconnect.property</field>
+        <field name="arch" type="xml">
+            <tree string="CloudConnect Properties" decoration-success="last_sync_status=='success'" 
+                  decoration-warning="last_sync_status=='partial'" decoration-danger="last_sync_status=='error'"
+                  decoration-muted="active==False">
+                <field name="cloudbeds_id"/>
+                <field name="name"/>
+                <field name="city"/>
+                <field name="country_id"/>
+                <field name="config_id"/>
+                <field name="last_sync_status" widget="badge" 
+                       decoration-success="last_sync_status=='success'"
+                       decoration-warning="last_sync_status=='partial'"
+                       decoration-danger="last_sync_status=='error'"
+                       decoration-info="last_sync_status=='pending'"/>
+                <field name="last_sync_date"/>
+                <field name="sync_error_count"/>
+                <field name="sync_enabled" widget="boolean_toggle"/>
+                <field name="active" widget="boolean_toggle"/>
+                <button name="action_sync_now" type="object" 
+                        string="Sync Now" icon="fa-sync" 
+                        class="btn-primary" title="Manual Sync"/>
+                <button name="action_reset_sync_errors" type="object" 
+                        string="Reset Errors" icon="fa-refresh" 
+                        class="btn-secondary" title="Reset Error Count"
+                        attrs="{'invisible': [('sync_error_count', '=', 0)]}"/>
+            </tree>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Property Form View -->
+    <record id="view_cloudconnect_property_form" model="ir.ui.view">
+        <field name="name">cloudconnect.property.form</field>
+        <field name="model">cloudconnect.property</field>
+        <field name="arch" type="xml">
+            <form string="CloudConnect Property">
+                <header>
+                    <button name="action_sync_now" type="object" 
+                            string="Sync Now" class="btn-primary" icon="fa-sync"/>
+                    <button name="action_reset_sync_errors" type="object" 
+                            string="Reset Errors" class="btn-secondary" icon="fa-refresh"
+                            attrs="{'invisible': [('sync_error_count', '=', 0)]}"/>
+                    <field name="last_sync_status" widget="statusbar" 
+                           statusbar_visible="pending,success,error,partial"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_sync_logs" type="object"
+                                class="oe_stat_button" icon="fa-list-alt">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Sync</span>
+                                <span class="o_stat_text">Logs</span>
+                            </div>
+                        </button>
+                        <button name="action_view_webhooks" type="object"
+                                class="oe_stat_button" icon="fa-bell">
+                            <div class="o_field_widget o_stat_info">
+                                <span class="o_stat_text">Webhooks</span>
+                            </div>
+                        </button>
+                        <button name="%(action_cloudconnect_sync_log)d" type="action"
+                                class="oe_stat_button" icon="fa-exclamation-triangle"
+                                context="{'search_default_property_id': active_id, 'search_default_error': 1}"
+                                attrs="{'invisible': [('sync_error_count', '=', 0)]}">
+                            <field name="sync_error_count" string="Errors" widget="statinfo"/>
+                        </button>
+                    </div>
+                    
+                    <widget name="web_ribbon" title="Inactive" bg_color="bg-danger" 
+                            attrs="{'invisible': [('active', '=', True)]}"/>
+                    <widget name="web_ribbon" title="Sync Disabled" bg_color="bg-warning" 
+                            attrs="{'invisible': ['|', ('sync_enabled', '=', True), ('active', '=', False)]}"/>
+                    
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Property Name"/>
+                        </h1>
+                        <h3>
+                            <field name="cloudbeds_id" placeholder="Cloudbeds Property ID"/>
+                        </h3>
+                    </div>
+                    
+                    <group>
+                        <group name="basic_info" string="Basic Information">
+                            <field name="config_id"/>
+                            <field name="active"/>
+                            <field name="sync_enabled"/>
+                            <field name="short_name"/>
+                            <field name="property_type"/>
+                        </group>
+                        <group name="property_details" string="Property Details">
+                            <field name="room_count"/>
+                            <field name="max_occupancy"/>
+                            <field name="timezone"/>
+                            <field name="currency_id"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Location" name="location">
+                            <group>
+                                <group string="Address">
+                                    <field name="address_line1"/>
+                                    <field name="address_line2"/>
+                                    <field name="city"/>
+                                    <field name="state"/>
+                                    <field name="zip_code"/>
+                                    <field name="country_id"/>
+                                </group>
+                                <group string="Contact Information">
+                                    <field name="phone" widget="phone"/>
+                                    <field name="email" widget="email"/>
+                                    <field name="website" widget="url"/>
+                                </group>
+                            </group>
+                        </page>
+                        
+                        <page string="Sync Status" name="sync_status">
+                            <group>
+                                <group string="Last Sync">
+                                    <field name="last_sync_date"/>
+                                    <field name="last_sync_status"/>
+                                    <field name="sync_error_count"/>
+                                    <field name="last_sync_error" widget="text" 
+                                           attrs="{'invisible': [('last_sync_error', '=', False)]}"/>
+                                </group>
+                                <group string="Statistics">
+                                    <field name="total_reservations"/>
+                                    <field name="total_guests"/>
+                                    <field name="total_payments"/>
+                                </group>
+                            </group>
+                            
+                            <div class="alert alert-danger" role="alert" 
+                                 attrs="{'invisible': ['|', ('sync_error_count', '=', 0), ('last_sync_error', '=', False)]}">
+                                <strong>Sync Errors Detected:</strong>
+                                <field name="last_sync_error" readonly="1"/>
+                                <br/>
+                                <button name="action_reset_sync_errors" type="object" 
+                                        string="Reset Error Count" class="btn btn-sm btn-secondary mt-2"/>
+                            </div>
+                            
+                            <div class="alert alert-success" role="alert" 
+                                 attrs="{'invisible': [('last_sync_status', '!=', 'success')]}">
+                                <strong>Last Sync Successful:</strong> 
+                                All data synchronized successfully on <field name="last_sync_date" readonly="1"/>.
+                            </div>
+                        </page>
+                        
+                        <page string="Webhooks" name="webhooks">
+                            <field name="webhook_ids" context="{'default_property_id': active_id}">
+                                <tree editable="bottom">
+                                    <field name="event_type"/>
+                                    <field name="status" widget="badge"/>
+                                    <field name="active" widget="boolean_toggle"/>
+                                    <field name="last_received"/>
+                                    <field name="total_events_received"/>
+                                    <field name="total_events_processed"/>
+                                    <field name="total_events_failed"/>
+                                    <button name="action_test_webhook" type="object" 
+                                            string="Test" icon="fa-play" class="btn-sm"/>
+                                </tree>
+                            </field>
+                        </page>
+                        
+                        <page string="Sync Logs" name="sync_logs">
+                            <field name="sync_log_ids" context="{'default_property_id': active_id}">
+                                <tree decoration-success="status=='success'" 
+                                      decoration-warning="status=='partial'" 
+                                      decoration-danger="status=='error'"
+                                      decoration-info="status in ['pending', 'processing']">
+                                    <field name="sync_date"/>
+                                    <field name="operation_type"/>
+                                    <field name="model_name"/>
+                                    <field name="cloudbeds_id"/>
+                                    <field name="status" widget="badge"/>
+                                    <field name="duration_ms"/>
+                                    <field name="error_message" optional="hide"/>
+                                    <button name="action_retry_sync" type="object" 
+                                            string="Retry" icon="fa-refresh" class="btn-sm"
+                                            attrs="{'invisible': [('is_retriable', '=', False)]}"/>
+                                </tree>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Property Kanban View -->
+    <record id="view_cloudconnect_property_kanban" model="ir.ui.view">
+        <field name="name">cloudconnect.property.kanban</field>
+        <field name="model">cloudconnect.property</field>
+        <field name="arch" type="xml">
+            <kanban class="o_kanban_mobile" default_group_by="config_id">
+                <field name="name"/>
+                <field name="cloudbeds_id"/>
+                <field name="city"/>
+                <field name="country_id"/>
+                <field name="last_sync_status"/>
+                <field name="last_sync_date"/>
+                <field name="sync_enabled"/>
+                <field name="sync_error_count"/>
+                <field name="room_count"/>
+                <templates>
+                    <t t-name="kanban-box">
+                        <div class="oe_kanban_card oe_kanban_global_click">
+                            <div class="oe_kanban_content">
+                                <div class="row">
+                                    <div class="col-8">
+                                        <strong><field name="name"/></strong>
+                                        <br/>
+                                        <span class="text-muted">ID: <field name="cloudbeds_id"/></span>
+                                    </div>
+                                    <div class="col-4 text-right">
+                                        <span t-attf-class="badge #{record.last_sync_status.raw_value === 'success' ? 'badge-success' : record.last_sync_status.raw_value === 'error' ? 'badge-danger' : record.last_sync_status.raw_value === 'partial' ? 'badge-warning' : 'badge-info'}">
+                                            <field name="last_sync_status"/>
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-8">
+                                        <i class="fa fa-map-marker"/> 
+                                        <field name="city"/>, <field name="country_id"/>
+                                    </div>
+                                    <div class="col-4 text-right">
+                                        <i class="fa fa-bed"/> <field name="room_count"/> rooms
+                                    </div>
+                                </div>
+                                <div class="row mt-1">
+                                    <div class="col-6">
+                                        <i class="fa fa-sync"/> 
+                                        <span t-if="record.sync_enabled.raw_value">Enabled</span>
+                                        <span t-else="" class="text-muted">Disabled</span>
+                                    </div>
+                                    <div class="col-6 text-right" t-if="record.sync_error_count.raw_value > 0">
+                                        <span class="badge badge-danger">
+                                            <i class="fa fa-exclamation-triangle"/> 
+                                            <field name="sync_error_count"/> errors
+                                        </span>
+                                    </div>
+                                </div>
+                                <div class="row mt-1" t-if="record.last_sync_date.raw_value">
+                                    <div class="col-12 text-muted">
+                                        <small>Last sync: <field name="last_sync_date"/></small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </templates>
+            </kanban>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Property Search View -->
+    <record id="view_cloudconnect_property_search" model="ir.ui.view">
+        <field name="name">cloudconnect.property.search</field>
+        <field name="model">cloudconnect.property</field>
+        <field name="arch" type="xml">
+            <search string="CloudConnect Properties">
+                <field name="name" string="Property Name" 
+                       filter_domain="[('name', 'ilike', self)]"/>
+                <field name="cloudbeds_id" string="Cloudbeds ID"/>
+                <field name="city" string="City"/>
+                <field name="config_id" string="Configuration"/>
+                
+                <filter string="Active" name="active" 
+                        domain="[('active', '=', True)]"/>
+                <filter string="Inactive" name="inactive" 
+                        domain="[('active', '=', False)]"/>
+                <separator/>
+                <filter string="Sync Enabled" name="sync_enabled" 
+                        domain="[('sync_enabled', '=', True)]"/>
+                <filter string="Sync Disabled" name="sync_disabled" 
+                        domain="[('sync_enabled', '=', False)]"/>
+                <separator/>
+                <filter string="Sync Success" name="sync_success" 
+                        domain="[('last_sync_status', '=', 'success')]"/>
+                <filter string="Sync Errors" name="sync_errors" 
+                        domain="[('last_sync_status', '=', 'error')]"/>
+                <filter string="Sync Partial" name="sync_partial" 
+                        domain="[('last_sync_status', '=', 'partial')]"/>
+                <filter string="Has Errors" name="has_errors" 
+                        domain="[('sync_error_count', '>', 0)]"/>
+                <separator/>
+                <filter string="Recently Synced" name="recent_sync" 
+                        domain="[('last_sync_date', '>=', (context_today() - datetime.timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S'))]"/>
+                
+                <group expand="0" string="Group By">
+                    <filter string="Configuration" name="group_config" 
+                            context="{'group_by': 'config_id'}"/>
+                    <filter string="Country" name="group_country" 
+                            context="{'group_by': 'country_id'}"/>
+                    <filter string="Sync Status" name="group_sync_status" 
+                            context="{'group_by': 'last_sync_status'}"/>
+                    <filter string="Sync Date" name="group_sync_date" 
+                            context="{'group_by': 'last_sync_date:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    
+    <!-- CloudConnect Property Action -->
+    <record id="action_cloudconnect_property" model="ir.actions.act_window">
+        <field name="name">CloudConnect Properties</field>
+        <field name="res_model">cloudconnect.property</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="view_id" ref="view_cloudconnect_property_kanban"/>
+        <field name="search_view_id" ref="view_cloudconnect_property_search"/>
+        <field name="context">{'search_default_active': 1, 'search_default_sync_enabled': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No properties configured yet!
+            </p>
+            <p>
+                Properties represent the hotels/accommodations in your Cloudbeds account. 
+                Configure your API credentials first, then use the Setup Wizard to import your properties.
+            </p>
+        </field>
+    </record>
+
+</odoo>
