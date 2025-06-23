@@ -13,7 +13,7 @@
                 </header>
                 <sheet>
                     <!-- Step 1: OAuth Credentials -->
-                    <group attrs="{'invisible': [('current_step', '!=', 'credentials')]}">
+                    <group invisible="current_step != 'credentials'">
                         <h2>Step 1: OAuth Credentials</h2>
                         <p class="text-muted">
                             Enter your Cloudbeds OAuth credentials. You can obtain these from your Cloudbeds account under API settings.
@@ -21,7 +21,7 @@
                         <group>
                             <group>
                                 <field name="config_id" invisible="1"/>
-                                <field name="config_name" attrs="{'readonly': [('config_id', '!=', False)]}"/>
+                                <field name="config_name" readonly="config_id != False"/>
                                 <field name="client_id" required="1" 
                                        placeholder="e.g., app_VisTh9b2YzfjiJJ4Z"/>
                                 <field name="client_secret" required="1" password="True"
@@ -31,7 +31,7 @@
                     </group>
                     
                     <!-- Step 2: Authentication -->
-                    <group attrs="{'invisible': [('current_step', '!=', 'authenticate')]}">
+                    <group invisible="current_step != 'authenticate'">
                         <h2>Step 2: Authentication</h2>
                         <div class="alert alert-info" role="alert">
                             <h4 class="alert-heading">Authorization Required</h4>
@@ -51,23 +51,23 @@
                                 <field name="auth_url" invisible="1"/>
                                 <field name="auth_code" 
                                        placeholder="Paste your authorization code here"
-                                       attrs="{'required': [('current_step', '=', 'authenticate')]}"/>
+                                       required="current_step == 'authenticate'"/>
                                 <field name="access_token_received" invisible="1"/>
                             </group>
                         </group>
                     </group>
                     
                     <!-- Step 3: Select Properties -->
-                    <group attrs="{'invisible': [('current_step', '!=', 'properties')]}">
+                    <group invisible="current_step != 'properties'">
                         <h2>Step 3: Select Properties</h2>
                         <p class="text-muted">
                             Select which properties you want to synchronize with Odoo.
                         </p>
                         <group>
                             <field name="available_properties" readonly="1" 
-                                   attrs="{'invisible': [('available_properties', '=', False)]}"/>
+                                   invisible="not available_properties"/>
                             <field name="property_ids" widget="many2many_checkboxes"
-                                   attrs="{'required': [('current_step', '=', 'properties')]}">
+                                   required="current_step == 'properties'">
                                 <tree>
                                     <field name="name"/>
                                     <field name="cloudbeds_id"/>
@@ -78,7 +78,7 @@
                     </group>
                     
                     <!-- Step 4: Configure Webhooks -->
-                    <group attrs="{'invisible': [('current_step', '!=', 'webhooks')]}">
+                    <group invisible="current_step != 'webhooks'">
                         <h2>Step 4: Configure Webhooks</h2>
                         <p class="text-muted">
                             Select which types of events you want to receive real-time updates for.
@@ -102,7 +102,7 @@
                     </group>
                     
                     <!-- Step 5: Complete -->
-                    <group attrs="{'invisible': [('current_step', '!=', 'complete')]}">
+                    <group invisible="current_step != 'complete'">
                         <h2>Setup Complete!</h2>
                         <div class="alert alert-success" role="alert">
                             <h4 class="alert-heading">Congratulations!</h4>
@@ -115,20 +115,20 @@
                         </div>
                         <group>
                             <field name="setup_log" readonly="1" 
-                                   attrs="{'invisible': [('setup_log', '=', False)]}"/>
+                                   invisible="not setup_log"/>
                         </group>
                     </group>
                 </sheet>
                 <footer>
                     <button name="action_previous" type="object" string="Previous" 
                             class="btn-secondary"
-                            attrs="{'invisible': ['|', ('current_step', '=', 'credentials'), ('current_step', '=', 'complete')]}"/>
+                            invisible="current_step == 'credentials' or current_step == 'complete'"/>
                     <button name="action_next" type="object" string="Next" 
                             class="btn-primary"
-                            attrs="{'invisible': [('current_step', '=', 'complete')]}"/>
+                            invisible="current_step == 'complete'"/>
                     <button name="action_complete" type="object" string="Finish" 
                             class="btn-success"
-                            attrs="{'invisible': [('current_step', '!=', 'complete')]}"/>
+                            invisible="current_step != 'complete'"/>
                     <button string="Cancel" class="btn-secondary" special="cancel"/>
                 </footer>
             </form>

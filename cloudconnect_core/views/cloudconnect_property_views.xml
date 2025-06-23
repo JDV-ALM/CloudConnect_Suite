@@ -20,7 +20,7 @@
                        decoration-danger="last_sync_status == 'failed'"/>
                 <button name="action_sync_now" type="object" 
                         string="Sync" class="btn-sm btn-primary"
-                        attrs="{'invisible': [('sync_enabled', '=', False)]}"/>
+                        invisible="not sync_enabled"/>
             </tree>
         </field>
     </record>
@@ -34,13 +34,13 @@
                 <header>
                     <button name="action_sync_now" type="object" 
                             string="Sync Now" class="btn-primary"
-                            attrs="{'invisible': [('sync_enabled', '=', False)]}"/>
+                            invisible="not sync_enabled"/>
                     <button name="toggle_sync_enabled" type="object" 
                             string="Enable Sync" class="btn-secondary"
-                            attrs="{'invisible': [('sync_enabled', '=', True)]}"/>
+                            invisible="sync_enabled"/>
                     <button name="toggle_sync_enabled" type="object" 
                             string="Disable Sync" class="btn-secondary"
-                            attrs="{'invisible': [('sync_enabled', '=', False)]}"/>
+                            invisible="not sync_enabled"/>
                 </header>
                 <sheet>
                     <div class="oe_button_box" name="button_box">
@@ -54,7 +54,7 @@
                         </button>
                     </div>
                     <widget name="web_ribbon" title="Sync Disabled" 
-                            attrs="{'invisible': [('sync_enabled', '=', True)]}"/>
+                            invisible="sync_enabled"/>
                     <div class="oe_title">
                         <h1>
                             <field name="name" readonly="1"/>
@@ -91,7 +91,7 @@
                             <field name="last_sync_date" readonly="1"/>
                             <field name="last_sync_status" readonly="1"/>
                             <field name="last_sync_message" readonly="1" 
-                                   attrs="{'invisible': [('last_sync_message', '=', False)]}"/>
+                                   invisible="not last_sync_message"/>
                         </group>
                     </group>
                     

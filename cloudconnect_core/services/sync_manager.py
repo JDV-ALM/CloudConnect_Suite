@@ -4,7 +4,7 @@ from odoo import models, api, fields, _
 from odoo.exceptions import UserError
 import logging
 from datetime import datetime, timedelta
-from queue import Queue, PriorityQueue
+from queue import Queue, PriorityQueue, Empty
 import threading
 
 _logger = logging.getLogger(__name__)
@@ -14,12 +14,20 @@ class SyncManager(models.AbstractModel):
     _name = 'cloudconnect.sync.manager'
     _description = 'CloudConnect Synchronization Manager'
     
-    def __init__(self, pool, cr):
-        super().__init__(pool, cr)
-        # Priority queue for sync operations
-        self._sync_queue = PriorityQueue()
-        self._sync_lock = threading.Lock()
-        self._active_syncs = {}
+    # Class-level attributes for queue management
+    _sync_queue = None
+    _sync_lock = None
+    _active_syncs = None
+    
+    @api.model
+    def _init_sync_manager(self):
+        """Initialize sync manager attributes."""
+        if not hasattr(self.__class__, '_sync_queue') or self.__class__._sync_queue is None:
+            self.__class__._sync_queue = PriorityQueue()
+        if not hasattr(self.__class__, '_sync_lock') or self.__class__._sync_lock is None:
+            self.__class__._sync_lock = threading.Lock()
+        if not hasattr(self.__class__, '_active_syncs') or self.__class__._active_syncs is None:
+            self.__class__._active_syncs = {}
     
     @api.model
     def sync_property(self, property_record):
@@ -29,6 +37,9 @@ class SyncManager(models.AbstractModel):
         :param property_record: cloudconnect.property record
         :return: Action dictionary with results
         """
+        # Initialize sync manager if needed
+        self._init_sync_manager()
+        
         if not property_record.sync_enabled:
             raise UserError(_("Synchronization is disabled for this property."))
         
@@ -36,10 +47,10 @@ class SyncManager(models.AbstractModel):
             raise UserError(_("No valid access token. Please authenticate first."))
         
         # Check if sync is already running for this property
-        with self._sync_lock:
-            if property_record.id in self._active_syncs:
+        with self.__class__._sync_lock:
+            if property_record.id in self.__class__._active_syncs:
                 raise UserError(_("Synchronization is already running for this property."))
-            self._active_syncs[property_record.id] = datetime.now()
+            self.__class__._active_syncs[property_record.id] = datetime.now()
         
         try:
             results = {
@@ -104,8 +115,8 @@ class SyncManager(models.AbstractModel):
             
         finally:
             # Remove from active syncs
-            with self._sync_lock:
-                self._active_syncs.pop(property_record.id, None)
+            with self.__class__._sync_lock:
+                self.__class__._active_syncs.pop(property_record.id, None)
     
     def _should_sync_model(self, property_record, model_name):
         """Check if model should be synced based on property settings."""
@@ -320,6 +331,9 @@ class SyncManager(models.AbstractModel):
         :param delay_minutes: Delay before sync
         :return: Sync job ID
         """
+        # Initialize sync manager if needed
+        self._init_sync_manager()
+        
         run_at = datetime.now() + timedelta(minutes=delay_minutes)
         
         sync_job = {
@@ -331,7 +345,7 @@ class SyncManager(models.AbstractModel):
         }
         
         # Add to queue with priority
-        self._sync_queue.put((priority, run_at, sync_job))
+        self.__class__._sync_queue.put((priority, run_at, sync_job))
         
         _logger.info(f"Scheduled sync for property {property_id} at {run_at}")
         return sync_job['id']
@@ -339,16 +353,19 @@ class SyncManager(models.AbstractModel):
     @api.model
     def process_sync_queue(self):
         """Process pending sync operations from queue."""
+        # Initialize sync manager if needed
+        self._init_sync_manager()
+        
         now = datetime.now()
         processed = 0
         
-        while not self._sync_queue.empty():
+        while not self.__class__._sync_queue.empty():
             try:
-                priority, run_at, sync_job = self._sync_queue.get_nowait()
+                priority, run_at, sync_job = self.__class__._sync_queue.get_nowait()
                 
                 if run_at > now:
                     # Not ready yet, put back in queue
-                    self._sync_queue.put((priority, run_at, sync_job))
+                    self.__class__._sync_queue.put((priority, run_at, sync_job))
                     break
                 
                 # Process sync

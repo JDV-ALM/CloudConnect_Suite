@@ -24,7 +24,7 @@
                         string="Details" class="btn-sm btn-link"/>
                 <button name="retry_operation" type="object" 
                         string="Retry" class="btn-sm btn-warning"
-                        attrs="{'invisible': ['|', ('status', '!=', 'error'), ('retry_count', '>=', 3)]}"/>
+                        invisible="status != 'error' or retry_count >= 3"/>
             </tree>
         </field>
     </record>
@@ -62,41 +62,41 @@
                         </group>
                     </group>
                     
-                    <group string="API Details" attrs="{'invisible': [('api_endpoint', '=', False)]}">
+                    <group string="API Details" invisible="not api_endpoint">
                         <group>
                             <field name="api_endpoint"/>
                             <field name="http_status"/>
                             <field name="request_id"/>
                         </group>
                         <group>
-                            <field name="retry_count" attrs="{'invisible': [('retry_count', '=', 0)]}"/>
-                            <field name="max_retries" attrs="{'invisible': [('retry_count', '=', 0)]}"/>
-                            <field name="next_retry" attrs="{'invisible': [('next_retry', '=', False)]}"/>
+                            <field name="retry_count" invisible="retry_count == 0"/>
+                            <field name="max_retries" invisible="retry_count == 0"/>
+                            <field name="next_retry" invisible="not next_retry"/>
                         </group>
                     </group>
                     
                     <notebook>
                         <page string="Request Data" name="request" 
-                              attrs="{'invisible': [('request_data', '=', False)]}">
+                              invisible="not request_data">
                             <field name="request_data" readonly="1" widget="ace" 
                                    options="{'mode': 'json', 'theme': 'monokai'}"/>
                         </page>
                         
                         <page string="Response Data" name="response" 
-                              attrs="{'invisible': [('response_data', '=', False)]}">
+                              invisible="not response_data">
                             <field name="response_data" readonly="1" widget="ace" 
                                    options="{'mode': 'json', 'theme': 'monokai'}"/>
                         </page>
                         
                         <page string="Error Details" name="errors" 
-                              attrs="{'invisible': ['&amp;', ('error_message', '=', False), ('warning_message', '=', False)]}">
-                            <group attrs="{'invisible': [('error_message', '=', False)]}">
+                              invisible="not error_message and not warning_message">
+                            <group invisible="not error_message">
                                 <div class="alert alert-danger" role="alert">
                                     <h4 class="alert-heading">Error</h4>
                                     <field name="error_message" readonly="1" nolabel="1"/>
                                 </div>
                             </group>
-                            <group attrs="{'invisible': [('warning_message', '=', False)]}">
+                            <group invisible="not warning_message">
                                 <div class="alert alert-warning" role="alert">
                                     <h4 class="alert-heading">Warning</h4>
                                     <field name="warning_message" readonly="1" nolabel="1"/>

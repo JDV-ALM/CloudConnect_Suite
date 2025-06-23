@@ -17,10 +17,10 @@
                 <field name="total_errors" decoration-danger="total_errors > 0"/>
                 <button name="action_register" type="object" 
                         string="Register" class="btn-sm btn-primary"
-                        attrs="{'invisible': [('cloudbeds_webhook_id', '!=', False)]}"/>
+                        invisible="cloudbeds_webhook_id != False"/>
                 <button name="action_unregister" type="object" 
                         string="Unregister" class="btn-sm btn-warning"
-                        attrs="{'invisible': [('cloudbeds_webhook_id', '=', False)]}"/>
+                        invisible="not cloudbeds_webhook_id"/>
             </tree>
         </field>
     </record>
@@ -34,10 +34,10 @@
                 <header>
                     <button name="action_register" type="object" 
                             string="Register with Cloudbeds" class="btn-primary"
-                            attrs="{'invisible': ['|', ('cloudbeds_webhook_id', '!=', False), ('active', '=', False)]}"/>
+                            invisible="cloudbeds_webhook_id != False or not active"/>
                     <button name="action_unregister" type="object" 
                             string="Unregister" class="btn-warning"
-                            attrs="{'invisible': [('cloudbeds_webhook_id', '=', False)]}"/>
+                            invisible="not cloudbeds_webhook_id"/>
                     <button name="action_regenerate_secret" type="object" 
                             string="Regenerate Secret" class="btn-secondary"
                             groups="cloudconnect_core.group_cloudconnect_manager"
@@ -45,10 +45,10 @@
                 </header>
                 <sheet>
                     <widget name="web_ribbon" title="Not Registered" 
-                            attrs="{'invisible': [('cloudbeds_webhook_id', '!=', False)]}"
+                            invisible="cloudbeds_webhook_id != False"
                             bg_color="bg-warning"/>
                     <widget name="web_ribbon" title="Inactive" 
-                            attrs="{'invisible': [('active', '=', True)]}"
+                            invisible="active"
                             bg_color="bg-danger"/>
                     <div class="oe_title">
                         <h1>
@@ -59,11 +59,11 @@
                     <group>
                         <group string="Configuration">
                             <field name="config_id" 
-                                   attrs="{'readonly': [('cloudbeds_webhook_id', '!=', False)]}"/>
+                                   readonly="cloudbeds_webhook_id != False"/>
                             <field name="event_type" 
-                                   attrs="{'readonly': [('cloudbeds_webhook_id', '!=', False)]}"/>
+                                   readonly="cloudbeds_webhook_id != False"/>
                             <field name="property_id" 
-                                   attrs="{'readonly': [('cloudbeds_webhook_id', '!=', False)]}"
+                                   readonly="cloudbeds_webhook_id != False"
                                    domain="[('config_id', '=', config_id)]"/>
                             <field name="active"/>
                         </group>
@@ -90,7 +90,7 @@
                         </group>
                     </group>
                     
-                    <group string="Last Error" attrs="{'invisible': [('last_error', '=', False)]}">
+                    <group string="Last Error" invisible="not last_error">
                         <field name="last_error" readonly="1" nolabel="1"/>
                     </group>
                     
