@@ -1,438 +1,358 @@
 # -*- coding: utf-8 -*-
 
-import logging
-import requests
-import time
-import json
-from datetime import datetime, timedelta
-from threading import Lock
 from odoo import models, api, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
+import requests
+import json
+import time
+import logging
+from datetime import datetime
+from functools import wraps
 
 _logger = logging.getLogger(__name__)
+
+
+def rate_limit(calls_per_second):
+    """Decorator to implement rate limiting."""
+    min_interval = 1.0 / calls_per_second
+    last_called = [0.0]
+    
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            elapsed = time.time() - last_called[0]
+            left_to_wait = min_interval - elapsed
+            if left_to_wait > 0:
+                time.sleep(left_to_wait)
+            ret = func(*args, **kwargs)
+            last_called[0] = time.time()
+            return ret
+        return wrapper
+    return decorator
 
 
 class CloudbedsAPIService(models.AbstractModel):
     _name = 'cloudconnect.api.service'
     _description = 'Cloudbeds API Service'
-
-    # Rate limiting storage (class-level to persist across instances)
-    _rate_limiters = {}
-    _rate_limiter_lock = Lock()
-
-    def __init__(self, pool, cr):
-        super().__init__(pool, cr)
-        self._session = None
-
-    def _get_session(self):
-        """Get or create a requests session with proper configuration."""
-        if not self._session:
-            self._session = requests.Session()
-            self._session.headers.update({
-                'User-Agent': 'CloudConnect-Odoo/1.0',
-                'Accept': 'application/json',
-                'Content-Type': 'application/x-www-form-urlencoded',
-            })
-        return self._session
-
-    def _get_rate_limiter(self, config_id):
-        """Get or create rate limiter for a configuration."""
-        with self._rate_limiter_lock:
-            if config_id not in self._rate_limiters:
-                config = self.env['cloudconnect.config'].browse(config_id)
-                self._rate_limiters[config_id] = {
-                    'requests_per_second': config.rate_limit_requests,
-                    'burst_tolerance': config.rate_limit_burst,
-                    'tokens': config.rate_limit_burst,
-                    'last_refill': time.time(),
-                    'lock': Lock(),
-                }
-            return self._rate_limiters[config_id]
-
-    def _wait_for_rate_limit(self, config_id):
-        """Implement token bucket rate limiting."""
-        limiter = self._get_rate_limiter(config_id)
-        
-        with limiter['lock']:
-            now = time.time()
-            time_passed = now - limiter['last_refill']
-            
-            # Refill tokens based on time passed
-            tokens_to_add = time_passed * limiter['requests_per_second']
-            limiter['tokens'] = min(
-                limiter['burst_tolerance'],
-                limiter['tokens'] + tokens_to_add
-            )
-            limiter['last_refill'] = now
-            
-            # Check if we have tokens available
-            if limiter['tokens'] >= 1:
-                limiter['tokens'] -= 1
-                return  # We can proceed
-            
-            # Calculate wait time
-            wait_time = (1 - limiter['tokens']) / limiter['requests_per_second']
-            _logger.info(f"Rate limiting: waiting {wait_time:.2f} seconds")
-            time.sleep(wait_time)
-            
-            # After waiting, we should have a token
-            limiter['tokens'] = 0
-            limiter['last_refill'] = time.time()
-
-    def _make_request(self, config, method, endpoint, data=None, params=None, 
-                     property_id=None, timeout=30, retries=3):
-        """Make a request to Cloudbeds API with error handling and retries."""
-        
-        # Ensure we have a valid access token
-        if config.is_token_expired():
-            if not config.refresh_access_token():
-                raise UserError(_("Failed to refresh access token"))
-        
-        access_token = config.get_access_token()
-        if not access_token:
-            raise UserError(_("No valid access token available"))
-        
-        # Apply rate limiting
-        self._wait_for_rate_limit(config.id)
-        
-        # Prepare request
-        url = f"{config.api_endpoint.rstrip('/')}/{endpoint.lstrip('/')}"
-        headers = {
-            'Authorization': f'Bearer {access_token}',
+    
+    def _get_headers(self, config):
+        """Get headers for API request."""
+        return {
+            'Authorization': f'Bearer {config.get_decrypted_access_token()}',
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
         }
+    
+    def _make_request(self, config, method, endpoint, params=None, data=None, retry_count=0):
+        """
+        Make HTTP request to Cloudbeds API with retry logic.
         
-        # Add property ID to params if specified
-        if property_id and params is None:
-            params = {}
-        if property_id:
-            params['propertyID'] = property_id
+        :param config: cloudconnect.config record
+        :param method: HTTP method (GET, POST, PUT, DELETE)
+        :param endpoint: API endpoint (e.g., 'getReservation')
+        :param params: Query parameters
+        :param data: Request body data
+        :param retry_count: Current retry attempt
+        :return: Response data
+        """
+        max_retries = 3
         
-        session = self._get_session()
+        # Create sync log
+        sync_log = self.env['cloudconnect.sync.log'].create({
+            'operation_type': 'api_call',
+            'model_name': 'cloudconnect.api.service',
+            'action': 'fetch',
+            'config_id': config.id,
+            'api_endpoint': endpoint,
+            'request_data': json.dumps(data or params or {}, indent=2),
+            'status': 'pending',
+        })
         
-        # Generate request ID for tracking
-        request_id = f"odoo_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{id(self)}"
-        headers['X-Request-ID'] = request_id
+        start_time = time.time()
         
-        # Create sync log entry
-        sync_log = None
-        if property_id:
-            property_obj = self.env['cloudconnect.property'].search([
-                ('cloudbeds_id', '=', str(property_id))
-            ], limit=1)
-            if property_obj:
-                sync_log = self.env['cloudconnect.sync_log'].create({
-                    'property_id': property_obj.id,
-                    'operation_type': 'api_call',
-                    'model_name': 'api.request',
-                    'cloudbeds_id': endpoint,
-                    'status': 'processing',
-                    'request_id': request_id,
-                    'api_endpoint': endpoint,
-                    'request_method': method.upper(),
-                    'request_data': json.dumps(data) if data else None,
-                })
-                sync_log.mark_as_started()
-        
-        last_exception = None
-        
-        for attempt in range(retries + 1):
-            try:
-                _logger.debug(f"API Request [{request_id}]: {method.upper()} {url}")
+        try:
+            # Check token expiration
+            if config.token_expires_at and datetime.now() > config.token_expires_at:
+                _logger.info("Token expired, refreshing...")
+                config.refresh_access_token()
+            
+            # Apply rate limiting based on config
+            rate_limiter = rate_limit(config.rate_limit)
+            
+            @rate_limiter
+            def make_request():
+                url = f"{config.api_endpoint}/{endpoint}"
+                headers = self._get_headers(config)
                 
-                # Make the request
-                if method.upper() == 'GET':
-                    response = session.get(url, params=params, headers=headers, timeout=timeout)
-                elif method.upper() == 'POST':
-                    response = session.post(url, data=data, params=params, headers=headers, timeout=timeout)
-                elif method.upper() == 'PUT':
-                    response = session.put(url, data=data, params=params, headers=headers, timeout=timeout)
-                elif method.upper() == 'PATCH':
-                    response = session.patch(url, data=data, params=params, headers=headers, timeout=timeout)
-                elif method.upper() == 'DELETE':
-                    response = session.delete(url, params=params, headers=headers, timeout=timeout)
+                _logger.info(f"API Request: {method} {url}")
+                
+                if method == 'GET':
+                    return requests.get(url, headers=headers, params=params, timeout=30)
+                elif method == 'POST':
+                    # For POST, use form data instead of JSON for Cloudbeds API
+                    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                    return requests.post(url, headers=headers, data=data or params, timeout=30)
+                elif method == 'PUT':
+                    headers['Content-Type'] = 'application/x-www-form-urlencoded'
+                    return requests.put(url, headers=headers, data=data or params, timeout=30)
+                elif method == 'DELETE':
+                    return requests.delete(url, headers=headers, params=params, timeout=30)
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
+            
+            response = make_request()
+            duration = time.time() - start_time
+            
+            # Extract request ID for tracking
+            request_id = response.headers.get('X-Request-ID', '')
+            sync_log.request_id = request_id
+            sync_log.http_status = response.status_code
+            
+            # Handle response
+            if response.status_code == 200:
+                response_data = response.json()
                 
-                # Log response details
-                if sync_log:
-                    sync_log.http_status_code = response.status_code
-                
-                # Handle response
-                if response.status_code == 200:
-                    try:
-                        response_data = response.json()
-                        if sync_log:
-                            sync_log.mark_as_success(response_data)
-                        return response_data
-                    except json.JSONDecodeError as e:
-                        error_msg = f"Invalid JSON response: {e}"
-                        _logger.error(f"API Error [{request_id}]: {error_msg}")
-                        if sync_log:
-                            sync_log.mark_as_error(error_msg, response_data=response.text)
-                        raise UserError(error_msg)
-                
-                elif response.status_code == 401:
-                    # Token expired, try to refresh
-                    if attempt == 0 and config.refresh_access_token():
-                        access_token = config.get_access_token()
-                        headers['Authorization'] = f'Bearer {access_token}'
-                        continue
-                    else:
-                        error_msg = "Authentication failed - invalid or expired token"
-                        if sync_log:
-                            sync_log.mark_as_error(error_msg, 'AUTH_FAILED', response.status_code, response.text)
-                        raise UserError(error_msg)
-                
-                elif response.status_code == 429:
-                    # Rate limited by server
-                    wait_time = 60  # Wait 1 minute for server rate limiting
-                    _logger.warning(f"Server rate limiting [{request_id}]: waiting {wait_time} seconds")
-                    time.sleep(wait_time)
-                    continue
-                
-                elif response.status_code >= 500:
-                    # Server error - retry
-                    if attempt < retries:
-                        wait_time = 2 ** attempt  # Exponential backoff
-                        _logger.warning(f"Server error [{request_id}]: HTTP {response.status_code}, retrying in {wait_time} seconds")
-                        time.sleep(wait_time)
-                        continue
-                    else:
-                        error_msg = f"Server error: HTTP {response.status_code}"
-                        if sync_log:
-                            sync_log.mark_as_error(error_msg, 'SERVER_ERROR', response.status_code, response.text)
-                        raise UserError(error_msg)
-                
+                # Check Cloudbeds API success flag
+                if response_data.get('success', True):
+                    sync_log.mark_success(response_data, duration)
+                    return response_data
                 else:
-                    # Other client errors
-                    try:
-                        error_data = response.json()
-                        error_msg = error_data.get('message', f"HTTP {response.status_code}")
-                    except:
-                        error_msg = f"HTTP {response.status_code}: {response.text}"
-                    
-                    if sync_log:
-                        sync_log.mark_as_error(error_msg, 'CLIENT_ERROR', response.status_code, response.text)
-                    raise UserError(error_msg)
+                    # API returned success=false
+                    error_msg = response_data.get('message', 'Unknown API error')
+                    sync_log.mark_error(error_msg, response.status_code, response_data)
+                    raise UserError(_("Cloudbeds API Error: %s") % error_msg)
+            
+            elif response.status_code == 401:
+                # Unauthorized - try refreshing token
+                if retry_count == 0:
+                    _logger.info("Got 401, attempting token refresh...")
+                    config.refresh_access_token()
+                    return self._make_request(config, method, endpoint, params, data, retry_count + 1)
+                else:
+                    sync_log.mark_error("Authentication failed after token refresh", 401)
+                    raise UserError(_("Authentication failed. Please re-authenticate."))
+            
+            elif response.status_code == 429:
+                # Rate limit exceeded
+                retry_after = int(response.headers.get('Retry-After', 60))
+                sync_log.mark_error(f"Rate limit exceeded. Retry after {retry_after} seconds", 429)
                 
-            except requests.exceptions.Timeout:
-                last_exception = UserError(f"Request timeout after {timeout} seconds")
-                if attempt < retries:
-                    _logger.warning(f"Timeout [{request_id}]: retrying ({attempt + 1}/{retries})")
-                    continue
-                    
-            except requests.exceptions.ConnectionError as e:
-                last_exception = UserError(f"Connection error: {e}")
-                if attempt < retries:
-                    _logger.warning(f"Connection error [{request_id}]: retrying ({attempt + 1}/{retries})")
-                    time.sleep(2 ** attempt)
-                    continue
-                    
-            except requests.exceptions.RequestException as e:
-                last_exception = UserError(f"Request error: {e}")
-                break  # Don't retry for other request exceptions
+                if retry_count < max_retries:
+                    _logger.warning(f"Rate limit hit, waiting {retry_after} seconds...")
+                    time.sleep(retry_after)
+                    return self._make_request(config, method, endpoint, params, data, retry_count + 1)
+                else:
+                    raise UserError(_("Rate limit exceeded. Please try again later."))
+            
+            else:
+                # Other error
+                error_text = response.text
+                sync_log.mark_error(f"HTTP {response.status_code}: {error_text}", response.status_code)
+                
+                if retry_count < max_retries and response.status_code >= 500:
+                    # Retry on server errors
+                    wait_time = 2 ** retry_count  # Exponential backoff
+                    _logger.warning(f"Server error, retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                    return self._make_request(config, method, endpoint, params, data, retry_count + 1)
+                else:
+                    raise UserError(_(
+                        "API request failed.\nStatus: %s\nResponse: %s\nRequest ID: %s"
+                    ) % (response.status_code, error_text, request_id))
         
-        # If we get here, all retries failed
-        if sync_log:
-            sync_log.mark_as_error(str(last_exception), 'REQUEST_FAILED')
-        raise last_exception
-
-    # Convenience methods for different HTTP verbs
-    def get(self, config, endpoint, params=None, property_id=None, **kwargs):
-        """Make a GET request to Cloudbeds API."""
-        return self._make_request(config, 'GET', endpoint, params=params, 
-                                 property_id=property_id, **kwargs)
-
-    def post(self, config, endpoint, data=None, params=None, property_id=None, **kwargs):
-        """Make a POST request to Cloudbeds API."""
-        return self._make_request(config, 'POST', endpoint, data=data, params=params,
-                                 property_id=property_id, **kwargs)
-
-    def put(self, config, endpoint, data=None, params=None, property_id=None, **kwargs):
-        """Make a PUT request to Cloudbeds API."""
-        return self._make_request(config, 'PUT', endpoint, data=data, params=params,
-                                 property_id=property_id, **kwargs)
-
-    def patch(self, config, endpoint, data=None, params=None, property_id=None, **kwargs):
-        """Make a PATCH request to Cloudbeds API."""
-        return self._make_request(config, 'PATCH', endpoint, data=data, params=params,
-                                 property_id=property_id, **kwargs)
-
-    def delete(self, config, endpoint, params=None, property_id=None, **kwargs):
-        """Make a DELETE request to Cloudbeds API."""
-        return self._make_request(config, 'DELETE', endpoint, params=params,
-                                 property_id=property_id, **kwargs)
-
-    # High-level API methods
-    def get_hotels(self, config):
-        """Get list of hotels/properties."""
-        return self.get(config, 'getHotels')
-
-    def get_hotel_details(self, config, property_id):
-        """Get detailed information about a specific property."""
-        return self.get(config, 'getHotelDetails', property_id=property_id)
-
-    def get_reservations(self, config, property_id, date_from=None, date_to=None, **filters):
-        """Get reservations for a property."""
+        except requests.exceptions.Timeout:
+            sync_log.mark_error("Request timeout", 0)
+            if retry_count < max_retries:
+                wait_time = 2 ** retry_count
+                time.sleep(wait_time)
+                return self._make_request(config, method, endpoint, params, data, retry_count + 1)
+            else:
+                raise UserError(_("Request timeout. Please try again."))
+        
+        except requests.exceptions.ConnectionError as e:
+            sync_log.mark_error(f"Connection error: {str(e)}", 0)
+            raise UserError(_("Connection error. Please check your internet connection."))
+        
+        except Exception as e:
+            sync_log.mark_error(f"Unexpected error: {str(e)}", 0)
+            raise
+    
+    # Property Management
+    def get_properties(self, config):
+        """Get list of properties."""
+        response = self._make_request(config, 'GET', 'getHotels')
+        return response.get('data', [])
+    
+    def get_property_details(self, config, property_id=None):
+        """Get detailed property information."""
         params = {}
-        if date_from:
-            params['checkInFrom'] = date_from
-        if date_to:
-            params['checkInTo'] = date_to
-        params.update(filters)
-        
-        return self.get(config, 'getReservations', params=params, property_id=property_id)
-
-    def get_reservation(self, config, property_id, reservation_id):
-        """Get specific reservation details."""
+        if property_id:
+            params['propertyID'] = property_id
+        response = self._make_request(config, 'GET', 'getHotelDetails', params=params)
+        return response.get('data', {})
+    
+    # Reservation Management
+    def get_reservation(self, config, reservation_id):
+        """Get single reservation."""
         params = {'reservationID': reservation_id}
-        return self.get(config, 'getReservation', params=params, property_id=property_id)
-
-    def get_guests(self, config, property_id, **filters):
-        """Get guests for a property."""
-        return self.get(config, 'getGuestList', params=filters, property_id=property_id)
-
-    def get_guest(self, config, property_id, guest_id=None, reservation_id=None):
-        """Get specific guest details."""
+        response = self._make_request(config, 'GET', 'getReservation', params=params)
+        return response.get('data', {})
+    
+    def get_reservations(self, config, filters=None):
+        """Get list of reservations with filters."""
+        params = filters or {}
+        # Add pagination if not specified
+        if 'pageSize' not in params:
+            params['pageSize'] = 100
+        if 'pageNumber' not in params:
+            params['pageNumber'] = 1
+            
+        response = self._make_request(config, 'GET', 'getReservations', params=params)
+        return response.get('data', [])
+    
+    def create_reservation(self, config, reservation_data):
+        """Create new reservation."""
+        response = self._make_request(config, 'POST', 'postReservation', data=reservation_data)
+        return response.get('data', {})
+    
+    def update_reservation(self, config, reservation_id, update_data):
+        """Update existing reservation."""
+        update_data['reservationID'] = reservation_id
+        response = self._make_request(config, 'PUT', 'putReservation', data=update_data)
+        return response.get('data', {})
+    
+    # Guest Management
+    def get_guest(self, config, guest_id=None, reservation_id=None):
+        """Get guest information."""
         params = {}
         if guest_id:
             params['guestID'] = guest_id
         if reservation_id:
             params['reservationID'] = reservation_id
-        return self.get(config, 'getGuest', params=params, property_id=property_id)
-
-    def get_payments(self, config, property_id, reservation_id=None, **filters):
-        """Get payments for a property."""
-        params = filters.copy()
+            
+        response = self._make_request(config, 'GET', 'getGuest', params=params)
+        return response.get('data', {})
+    
+    def get_guests(self, config, filters=None):
+        """Get list of guests."""
+        params = filters or {}
+        if 'pageSize' not in params:
+            params['pageSize'] = 100
+            
+        response = self._make_request(config, 'GET', 'getGuestList', params=params)
+        return response.get('data', [])
+    
+    def create_guest(self, config, guest_data):
+        """Create new guest."""
+        response = self._make_request(config, 'POST', 'postGuest', data=guest_data)
+        return response.get('data', {})
+    
+    def update_guest(self, config, guest_id, update_data):
+        """Update guest information."""
+        update_data['guestID'] = guest_id
+        response = self._make_request(config, 'PUT', 'putGuest', data=update_data)
+        return response.get('data', {})
+    
+    # Room Management
+    def get_room_types(self, config, property_ids=None):
+        """Get room types."""
+        params = {}
+        if property_ids:
+            params['propertyIDs'] = ','.join(map(str, property_ids))
+            
+        response = self._make_request(config, 'GET', 'getRoomTypes', params=params)
+        return response.get('data', [])
+    
+    def get_rooms(self, config, filters=None):
+        """Get list of rooms."""
+        params = filters or {}
+        response = self._make_request(config, 'GET', 'getRooms', params=params)
+        return response.get('data', [])
+    
+    def get_available_room_types(self, config, start_date, end_date, adults, children, rooms=1):
+        """Get available room types for dates."""
+        params = {
+            'startDate': start_date,
+            'endDate': end_date,
+            'adults': adults,
+            'children': children,
+            'rooms': rooms,
+        }
+        response = self._make_request(config, 'GET', 'getAvailableRoomTypes', params=params)
+        return response.get('data', [])
+    
+    # Rate Management
+    def get_rates(self, config, room_type_id, start_date, end_date, adults=1, children=0):
+        """Get rates for room type and dates."""
+        params = {
+            'roomTypeID': room_type_id,
+            'startDate': start_date,
+            'endDate': end_date,
+            'adults': adults,
+            'children': children,
+            'detailedRates': True,
+        }
+        response = self._make_request(config, 'GET', 'getRate', params=params)
+        return response.get('data', {})
+    
+    def update_rates(self, config, rate_updates):
+        """Update rates (batch operation)."""
+        response = self._make_request(config, 'PATCH', 'patchRate', data={'rates': rate_updates})
+        return response.get('data', {})
+    
+    # Payment Management
+    def get_payments(self, config, reservation_id=None, guest_id=None):
+        """Get payments."""
+        params = {}
         if reservation_id:
             params['reservationID'] = reservation_id
-        return self.get(config, 'getPayments', params=params, property_id=property_id)
-
-    def get_transactions(self, config, property_id, **filters):
-        """Get transactions for a property."""
-        return self.get(config, 'getTransactions', params=filters, property_id=property_id)
-
-    def get_items(self, config, property_id, category_id=None):
-        """Get items/products for a property."""
-        params = {}
-        if category_id:
-            params['itemCategoryID'] = category_id
-        return self.get(config, 'getItems', params=params, property_id=property_id)
-
-    def get_item_categories(self, config, property_id):
-        """Get item categories for a property."""
-        return self.get(config, 'getItemCategories', property_id=property_id)
-
-    def get_room_types(self, config, property_id):
-        """Get room types for a property."""
-        return self.get(config, 'getRoomTypes', property_id=property_id)
-
-    def get_rooms(self, config, property_id, room_type_id=None):
-        """Get rooms for a property."""
-        params = {}
-        if room_type_id:
-            params['roomTypeID'] = room_type_id
-        return self.get(config, 'getRooms', params=params, property_id=property_id)
-
-    def post_webhook(self, config, property_id, object_type, action, endpoint_url):
-        """Register a webhook with Cloudbeds."""
-        data = {
-            'propertyID': property_id,
-            'object': object_type,
-            'action': action,
-            'endpointUrl': endpoint_url
-        }
-        return self.post(config, 'postWebhook', data=data)
-
+        if guest_id:
+            params['guestID'] = guest_id
+            
+        response = self._make_request(config, 'GET', 'getPayments', params=params)
+        return response.get('data', [])
+    
+    def create_payment(self, config, payment_data):
+        """Create payment."""
+        response = self._make_request(config, 'POST', 'postPayment', data=payment_data)
+        return response.get('data', {})
+    
+    # Webhook Management
+    def get_webhooks(self, config):
+        """Get list of registered webhooks."""
+        response = self._make_request(config, 'GET', 'getWebhooks')
+        return response.get('data', [])
+    
+    def post_webhook(self, config, webhook_data):
+        """Register new webhook."""
+        response = self._make_request(config, 'POST', 'postWebhook', data=webhook_data)
+        return response.get('data', {})
+    
     def delete_webhook(self, config, subscription_id):
-        """Unregister a webhook from Cloudbeds."""
+        """Delete webhook subscription."""
         params = {'subscriptionID': subscription_id}
-        return self.delete(config, 'deleteWebhook', params=params)
-
-    def get_webhooks(self, config, property_id):
-        """Get registered webhooks for a property."""
-        return self.get(config, 'getWebhooks', property_id=property_id)
-
-    @api.model
-    def test_api_connection(self, config_id):
-        """Test API connection for a configuration."""
-        config = self.env['cloudconnect.config'].browse(config_id)
-        try:
-            result = self.get_hotels(config)
-            return {
-                'success': True,
-                'message': _("API connection test successful"),
-                'data': result
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'message': str(e),
-                'data': None
-            }
-
-    @api.model
-    def sync_properties(self, config_id):
-        """Sync properties from Cloudbeds to update local property list."""
-        config = self.env['cloudconnect.config'].browse(config_id)
-        
-        try:
-            hotels_data = self.get_hotels(config)
+        response = self._make_request(config, 'DELETE', 'deleteWebhook', params=params)
+        return response.get('data', {})
+    
+    # Housekeeping
+    def get_housekeeping_status(self, config, filters=None):
+        """Get housekeeping status."""
+        params = filters or {}
+        response = self._make_request(config, 'GET', 'getHousekeepingStatus', params=params)
+        return response.get('data', [])
+    
+    def update_housekeeping_status(self, config, room_id, status_data):
+        """Update housekeeping status."""
+        status_data['roomID'] = room_id
+        response = self._make_request(config, 'POST', 'postHousekeepingStatus', data=status_data)
+        return response.get('data', {})
+    
+    # Dashboard
+    def get_dashboard(self, config, date=None):
+        """Get dashboard data."""
+        params = {}
+        if date:
+            params['date'] = date
             
-            if not hotels_data.get('success'):
-                raise UserError(_("Failed to fetch hotels from Cloudbeds"))
-            
-            properties = hotels_data.get('data', [])
-            synced_count = 0
-            
-            for hotel_data in properties:
-                cloudbeds_id = str(hotel_data.get('propertyID'))
-                
-                # Check if property already exists
-                existing_property = self.env['cloudconnect.property'].search([
-                    ('cloudbeds_id', '=', cloudbeds_id),
-                    ('config_id', '=', config_id)
-                ], limit=1)
-                
-                property_vals = {
-                    'cloudbeds_id': cloudbeds_id,
-                    'name': hotel_data.get('propertyName', 'Unknown'),
-                    'config_id': config_id,
-                    'city': hotel_data.get('propertyCity'),
-                    'country_id': self._get_country_id(hotel_data.get('propertyCountry')),
-                    'timezone': hotel_data.get('propertyTimezone', 'UTC'),
-                    'phone': hotel_data.get('propertyPhone'),
-                    'email': hotel_data.get('propertyEmail'),
-                }
-                
-                if existing_property:
-                    existing_property.write(property_vals)
-                else:
-                    self.env['cloudconnect.property'].create(property_vals)
-                
-                synced_count += 1
-            
-            return {
-                'success': True,
-                'message': _("Synced %d properties") % synced_count,
-                'count': synced_count
-            }
-            
-        except Exception as e:
-            _logger.error(f"Property sync failed: {e}")
-            return {
-                'success': False,
-                'message': str(e),
-                'count': 0
-            }
-
-    def _get_country_id(self, country_code):
-        """Get country ID from country code."""
-        if not country_code:
-            return False
-        
-        country = self.env['res.country'].search([
-            ('code', '=', country_code.upper())
-        ], limit=1)
-        
-        return country.id if country else False
+        response = self._make_request(config, 'GET', 'getDashboard', params=params)
+        return response.get('data', {})

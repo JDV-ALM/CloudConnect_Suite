@@ -1,221 +1,200 @@
 # -*- coding: utf-8 -*-
 
-import logging
-import json
-from odoo import http
+from odoo import http, _
 from odoo.http import request
+import json
+import logging
+import hmac
+import hashlib
+from werkzeug.exceptions import Forbidden, BadRequest
 
 _logger = logging.getLogger(__name__)
 
 
-class CloudconnectWebhookController(http.Controller):
+class CloudConnectWebhookController(http.Controller):
+    """Controller to handle incoming webhooks from Cloudbeds."""
     
-    @http.route('/cloudconnect/webhook/<string:property_id>/<string:event_type>', 
-                type='http', auth='none', methods=['POST'], csrf=False)
-    def receive_webhook(self, property_id, event_type, **kwargs):
+    @http.route([
+        '/cloudconnect/webhook/<string:property_id>/<path:event_type>',
+        '/cloudconnect/webhook/all/<path:event_type>'
+    ], type='json', auth='public', methods=['POST'], csrf=False)
+    def webhook_endpoint(self, event_type=None, property_id=None, **kwargs):
         """
-        Main webhook endpoint for receiving Cloudbeds events.
+        Main webhook endpoint for Cloudbeds events.
         
-        URL format: /cloudconnect/webhook/{property_id}/{event_type}
-        Example: /cloudconnect/webhook/12345/reservation_created
+        Routes:
+        - /cloudconnect/webhook/<property_id>/<event_type> - For property-specific webhooks
+        - /cloudconnect/webhook/all/<event_type> - For all properties webhooks
         """
         try:
-            # Log the incoming webhook
-            _logger.info(f"Webhook received: property_id={property_id}, event_type={event_type}")
+            # Log incoming webhook
+            _logger.info(f"Webhook received: event_type={event_type}, property_id={property_id}")
             
             # Get request data
-            payload = request.httprequest.get_data(as_text=True)
-            headers = dict(request.httprequest.headers)
+            data = request.get_json_data()
+            if not data:
+                _logger.error("No JSON data in webhook request")
+                return {'success': False, 'error': 'No data provided'}
             
-            # Basic validation
-            if not payload:
-                _logger.warning("Empty webhook payload received")
-                return self._error_response("Empty payload", 400)
+            # Validate webhook signature if provided
+            signature = request.httprequest.headers.get('X-Webhook-Signature')
+            if signature and not self._validate_signature(event_type, property_id, data, signature):
+                _logger.warning(f"Invalid webhook signature for event {event_type}")
+                raise Forbidden("Invalid signature")
             
-            # Validate property_id format
-            try:
-                int(property_id)  # Cloudbeds property IDs are integers
-            except ValueError:
-                _logger.warning(f"Invalid property_id format: {property_id}")
-                return self._error_response("Invalid property ID", 400)
+            # Process webhook
+            webhook_model = request.env['cloudconnect.webhook'].sudo()
+            success = webhook_model.process_webhook_event(event_type, property_id, data)
             
-            # Validate event_type format
-            if not self._is_valid_event_type(event_type):
-                _logger.warning(f"Invalid event_type: {event_type}")
-                return self._error_response("Invalid event type", 400)
-            
-            # Process the webhook
-            webhook_processor = request.env['cloudconnect.webhook.processor'].sudo()
-            result = webhook_processor.process_webhook(property_id, event_type, payload, headers)
-            
-            # Return appropriate response
-            if result.get('success'):
-                return self._success_response(result.get('message', 'Webhook processed'))
+            if success:
+                return {'success': True}
             else:
-                error_msg = result.get('error', 'Unknown error')
-                _logger.error(f"Webhook processing failed: {error_msg}")
-                return self._error_response(error_msg, 500)
+                return {'success': False, 'error': 'Webhook processing failed'}
                 
         except Exception as e:
-            _logger.error(f"Webhook controller error: {e}", exc_info=True)
-            return self._error_response("Internal server error", 500)
+            _logger.error(f"Error processing webhook: {str(e)}", exc_info=True)
+            return {'success': False, 'error': str(e)}
     
-    @http.route('/cloudconnect/webhook/health', type='http', auth='none', methods=['GET'])
+    @http.route('/cloudconnect/oauth/callback', type='http', auth='public', website=True)
+    def oauth_callback(self, code=None, state=None, error=None, **kwargs):
+        """OAuth2 callback endpoint."""
+        if error:
+            # OAuth error
+            return request.render('cloudconnect_core.oauth_error', {
+                'error': error,
+                'error_description': kwargs.get('error_description', 'Unknown error')
+            })
+        
+        if not code:
+            return request.render('cloudconnect_core.oauth_error', {
+                'error': 'missing_code',
+                'error_description': 'Authorization code not provided'
+            })
+        
+        # Display the authorization code for manual entry in wizard
+        return request.render('cloudconnect_core.oauth_success', {
+            'code': code,
+            'state': state
+        })
+    
+    @http.route('/cloudconnect/health', type='json', auth='public', methods=['GET'])
     def health_check(self, **kwargs):
-        """Health check endpoint for webhook service."""
-        return self._success_response("CloudConnect webhook service is healthy")
-    
-    @http.route('/cloudconnect/webhook/test/<string:property_id>/<string:event_type>', 
-                type='http', auth='user', methods=['POST'])
-    def test_webhook(self, property_id, event_type, **kwargs):
-        """Test webhook endpoint (requires authentication)."""
+        """Health check endpoint for monitoring."""
         try:
-            # Create test payload
-            test_payload = {
-                'version': '1.0',
-                'timestamp': 1640995200.0,  # Test timestamp
-                'event': f'{self._get_cloudbeds_object(event_type)}/{self._get_cloudbeds_action(event_type)}',
-                'propertyID': int(property_id),
-                'test': True,
-                'message': 'This is a test webhook event'
+            # Check if module is installed
+            module = request.env['ir.module.module'].sudo().search([
+                ('name', '=', 'cloudconnect_core'),
+                ('state', '=', 'installed')
+            ], limit=1)
+            
+            if not module:
+                return {
+                    'status': 'error',
+                    'message': 'CloudConnect Core module not installed'
+                }
+            
+            # Check for active configurations
+            config_count = request.env['cloudconnect.config'].sudo().search_count([
+                ('active', '=', True)
+            ])
+            
+            return {
+                'status': 'ok',
+                'module_version': module.installed_version,
+                'active_configs': config_count,
+                'webhook_endpoint': '/cloudconnect/webhook/{property_id}/{event_type}'
             }
             
-            # Add event-specific test data
-            if 'reservation' in event_type:
-                test_payload['reservationID'] = '999999999'
-                test_payload['startDate'] = '2024-01-01'
-                test_payload['endDate'] = '2024-01-02'
-            elif 'guest' in event_type:
-                test_payload['guestID'] = 999999
-                test_payload['guestId_str'] = '999999'
-            elif 'transaction' in event_type or 'payment' in event_type:
-                test_payload['transactionID'] = '999999999'
-                test_payload['amount'] = 100.00
+        except Exception as e:
+            return {
+                'status': 'error',
+                'message': str(e)
+            }
+    
+    def _validate_signature(self, event_type, property_id, data, signature):
+        """Validate webhook signature using HMAC."""
+        try:
+            # Find the webhook configuration
+            webhook_model = request.env['cloudconnect.webhook'].sudo()
             
-            # Process test webhook
-            webhook_processor = request.env['cloudconnect.webhook.processor']
-            result = webhook_processor.process_webhook(
-                property_id, event_type, json.dumps(test_payload)
+            domain = [
+                ('event_type', '=', event_type),
+                ('active', '=', True)
+            ]
+            
+            if property_id and property_id != 'all':
+                property = request.env['cloudconnect.property'].sudo().search([
+                    ('cloudbeds_id', '=', property_id)
+                ], limit=1)
+                if property:
+                    domain.append(('property_id', '=', property.id))
+            else:
+                domain.append(('property_id', '=', False))
+            
+            webhook = webhook_model.search(domain, limit=1)
+            
+            if not webhook:
+                _logger.warning(f"No webhook configuration found for validation")
+                return True  # Allow if no webhook configured
+            
+            # Validate signature
+            payload = json.dumps(data, sort_keys=True)
+            return webhook.validate_webhook_signature(payload, signature)
+            
+        except Exception as e:
+            _logger.error(f"Error validating webhook signature: {str(e)}")
+            return False
+    
+    @http.route('/cloudconnect/test/webhook', type='json', auth='user', methods=['POST'])
+    def test_webhook(self, webhook_id=None, **kwargs):
+        """Test endpoint for webhook configuration."""
+        if not webhook_id:
+            return {'success': False, 'error': 'webhook_id required'}
+        
+        webhook = request.env['cloudconnect.webhook'].browse(int(webhook_id))
+        if not webhook.exists():
+            return {'success': False, 'error': 'Webhook not found'}
+        
+        # Check access rights
+        webhook.check_access_rights('write')
+        webhook.check_access_rule('write')
+        
+        # Create test event
+        test_event = {
+            'version': '1.0',
+            'timestamp': 1234567890.123456,
+            'event': webhook.event_type,
+            'propertyID': webhook.property_id.cloudbeds_id if webhook.property_id else 12345,
+            'propertyID_str': str(webhook.property_id.cloudbeds_id if webhook.property_id else 12345),
+            'test': True,
+            'test_data': {
+                'message': 'This is a test webhook event',
+                'triggered_by': request.env.user.name,
+                'webhook_id': webhook.id
+            }
+        }
+        
+        # Process test event
+        try:
+            success = webhook.process_webhook_event(
+                webhook.event_type,
+                webhook.property_id.cloudbeds_id if webhook.property_id else None,
+                test_event
             )
             
-            if result.get('success'):
-                return request.render('cloudconnect_core.webhook_test_success', {
-                    'property_id': property_id,
-                    'event_type': event_type,
-                    'result': result,
-                    'payload': test_payload
-                })
+            if success:
+                return {
+                    'success': True,
+                    'message': 'Test webhook processed successfully'
+                }
             else:
-                return request.render('cloudconnect_core.webhook_test_error', {
-                    'property_id': property_id,
-                    'event_type': event_type,
-                    'error': result.get('error', 'Unknown error'),
-                    'payload': test_payload
-                })
+                return {
+                    'success': False,
+                    'error': 'Test webhook processing failed'
+                }
                 
         except Exception as e:
-            _logger.error(f"Webhook test error: {e}")
-            return request.render('cloudconnect_core.webhook_test_error', {
-                'property_id': property_id,
-                'event_type': event_type,
-                'error': str(e),
-                'payload': None
-            })
-    
-    def _success_response(self, message):
-        """Return a success HTTP response."""
-        response = request.make_response(
-            json.dumps({'success': True, 'message': message}),
-            headers=[('Content-Type', 'application/json')]
-        )
-        response.status_code = 200
-        return response
-    
-    def _error_response(self, message, status_code=400):
-        """Return an error HTTP response."""
-        response = request.make_response(
-            json.dumps({'success': False, 'error': message}),
-            headers=[('Content-Type', 'application/json')]
-        )
-        response.status_code = status_code
-        return response
-    
-    def _is_valid_event_type(self, event_type):
-        """Validate if event_type is supported."""
-        valid_events = [
-            # Reservations
-            'reservation_created', 'reservation_status_changed', 'reservation_dates_changed',
-            'reservation_accommodation_changed', 'reservation_deleted', 'reservation_notes_changed',
-            
-            # Guests
-            'guest_created', 'guest_assigned', 'guest_removed', 
-            'guest_details_changed', 'guest_accommodation_changed',
-            
-            # Payments/Transactions
-            'transaction_created', 'payment_created', 'payment_updated', 'payment_voided',
-            
-            # Items
-            'item_sold', 'item_voided', 'item_updated',
-            
-            # Room Management
-            'room_checkin', 'room_checkout', 'roomblock_created', 'roomblock_removed',
-            
-            # Housekeeping
-            'housekeeping_status_changed', 'room_condition_changed',
-            
-            # Integration
-            'integration_appstate_changed', 'integration_appsettings_changed',
-        ]
-        
-        return event_type in valid_events
-    
-    def _get_cloudbeds_object(self, event_type):
-        """Get Cloudbeds object type from event type."""
-        if event_type.startswith('reservation_'):
-            return 'reservation'
-        elif event_type.startswith('guest_'):
-            return 'guest'
-        elif event_type.startswith('transaction_') or event_type.startswith('payment_'):
-            return 'transaction'
-        elif event_type.startswith('item_'):
-            return 'item'
-        elif event_type.startswith('room'):
-            return 'room'
-        elif event_type.startswith('housekeeping_'):
-            return 'housekeeping'
-        elif event_type.startswith('integration_'):
-            return 'integration'
-        else:
-            return 'unknown'
-    
-    def _get_cloudbeds_action(self, event_type):
-        """Get Cloudbeds action from event type."""
-        action_map = {
-            'reservation_created': 'created',
-            'reservation_status_changed': 'status_changed',
-            'reservation_dates_changed': 'dates_changed',
-            'reservation_accommodation_changed': 'accommodation_changed',
-            'reservation_deleted': 'deleted',
-            'reservation_notes_changed': 'notes_changed',
-            'guest_created': 'created',
-            'guest_assigned': 'assigned',
-            'guest_removed': 'removed',
-            'guest_details_changed': 'details_changed',
-            'guest_accommodation_changed': 'accommodation_changed',
-            'transaction_created': 'created',
-            'payment_created': 'created',
-            'payment_updated': 'updated',
-            'payment_voided': 'voided',
-            'item_sold': 'sold',
-            'item_voided': 'voided',
-            'item_updated': 'updated',
-            'room_checkin': 'checkin',
-            'room_checkout': 'checkout',
-            'roomblock_created': 'created',
-            'roomblock_removed': 'removed',
-            'housekeeping_status_changed': 'status_changed',
-            'room_condition_changed': 'condition_changed',
-            'integration_appstate_changed': 'appstate_changed',
-            'integration_appsettings_changed': 'appsettings_changed',
-        }
-        return action_map.get(event_type, 'unknown')
+            return {
+                'success': False,
+                'error': str(e)
+            }

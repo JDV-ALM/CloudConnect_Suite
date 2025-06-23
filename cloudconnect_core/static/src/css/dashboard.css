@@ -1,0 +1,202 @@
+/* CloudConnect Dashboard Styles */
+
+.o_cloudconnect_dashboard {
+    background-color: #f8f9fa;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.o_cloudconnect_dashboard h1 {
+    color: #2c3e50;
+    font-weight: 300;
+    margin-bottom: 30px;
+}
+
+/* Statistics Cards */
+.o_cloudconnect_dashboard .card {
+    border: none;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    height: 100%;
+}
+
+.o_cloudconnect_dashboard .card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+}
+
+.o_cloudconnect_dashboard .card-body {
+    padding: 25px;
+}
+
+.o_cloudconnect_dashboard .card h2 {
+    font-size: 3rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.o_cloudconnect_dashboard .card h5 {
+    color: #6c757d;
+    font-size: 1rem;
+    font-weight: 500;
+    margin-bottom: 10px;
+}
+
+/* Quick Actions Buttons */
+.o_cloudconnect_dashboard .btn-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.o_cloudconnect_dashboard .btn {
+    padding: 10px 20px;
+    font-weight: 500;
+    border-radius: 5px;
+    transition: all 0.3s ease;
+}
+
+.o_cloudconnect_dashboard .btn i {
+    margin-right: 5px;
+}
+
+/* Recent Activity List */
+.o_cloudconnect_dashboard .list-unstyled li {
+    padding: 10px;
+    border-radius: 5px;
+    transition: background-color 0.2s ease;
+}
+
+.o_cloudconnect_dashboard .list-unstyled li:hover {
+    background-color: #f1f3f4;
+}
+
+/* Status Colors */
+.o_cloudconnect_dashboard .text-success {
+    color: #28a745 !important;
+}
+
+.o_cloudconnect_dashboard .text-danger {
+    color: #dc3545 !important;
+}
+
+.o_cloudconnect_dashboard .text-warning {
+    color: #ffc107 !important;
+}
+
+.o_cloudconnect_dashboard .text-info {
+    color: #17a2b8 !important;
+}
+
+/* Loading State */
+.o_cloudconnect_dashboard .fa-spinner {
+    color: #007bff;
+}
+
+/* Info Box Style */
+.info-box {
+    display: flex;
+    align-items: center;
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.info-box-icon {
+    width: 70px;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    font-size: 30px;
+    color: white;
+    margin-right: 20px;
+}
+
+.info-box-icon.bg-aqua {
+    background-color: #00c0ef;
+}
+
+.info-box-icon.bg-green {
+    background-color: #00a65a;
+}
+
+.info-box-icon.bg-yellow {
+    background-color: #f39c12;
+}
+
+.info-box-icon.bg-red {
+    background-color: #dd4b39;
+}
+
+.info-box-content {
+    flex: 1;
+}
+
+.info-box-text {
+    display: block;
+    font-size: 14px;
+    color: #6c757d;
+}
+
+.info-box-number {
+    display: block;
+    font-size: 24px;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .o_cloudconnect_dashboard .card h2 {
+        font-size: 2rem;
+    }
+    
+    .o_cloudconnect_dashboard .btn-group {
+        flex-direction: column;
+    }
+    
+    .o_cloudconnect_dashboard .btn {
+        width: 100%;
+    }
+}
+
+/* Chart Container */
+#sync_activity_chart {
+    max-height: 300px;
+}
+
+/* Error List */
+#recent_errors_list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#recent_errors_list li {
+    padding: 8px;
+    border-left: 3px solid #dc3545;
+    margin-bottom: 5px;
+    background-color: #f8d7da;
+    color: #721c24;
+    border-radius: 0 5px 5px 0;
+}
+
+/* Animation for new items */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.o_cloudconnect_dashboard .list-unstyled li {
+    animation: slideIn 0.3s ease-out;
+}

@@ -1,314 +1,303 @@
 # -*- coding: utf-8 -*-
 
-import logging
-import pytz
 from odoo import models, fields, api, _
 from odoo.exceptions import ValidationError
+import logging
 
 _logger = logging.getLogger(__name__)
 
 
-class CloudconnectProperty(models.Model):
+class CloudConnectProperty(models.Model):
     _name = 'cloudconnect.property'
-    _description = 'CloudConnect Property (Hotel)'
-    _rec_name = 'display_name'
+    _description = 'CloudConnect Property'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
+    _rec_name = 'name'
     _order = 'name'
-
-    # Basic Information
+    
     cloudbeds_id = fields.Char(
         string='Cloudbeds Property ID',
         required=True,
         index=True,
-        help='Unique identifier of the property in Cloudbeds'
+        tracking=True,
+        help='Unique identifier for this property in Cloudbeds'
     )
+    
     name = fields.Char(
         string='Property Name',
         required=True,
-        help='Name of the hotel/property'
-    )
-    display_name = fields.Char(
-        string='Display Name',
-        compute='_compute_display_name',
-        store=True
-    )
-    short_name = fields.Char(
-        string='Short Name',
-        help='Short name for the property'
+        tracking=True
     )
     
-    # Configuration
     config_id = fields.Many2one(
         'cloudconnect.config',
         string='Configuration',
         required=True,
-        ondelete='cascade',
-        help='CloudConnect configuration for this property'
-    )
-    active = fields.Boolean(
-        string='Active',
-        default=True,
-        help='Set to false to disable sync for this property'
-    )
-    sync_enabled = fields.Boolean(
-        string='Sync Enabled',
-        default=True,
-        help='Enable automatic synchronization for this property'
+        ondelete='cascade'
     )
     
-    # Location Information
-    address_line1 = fields.Char(string='Address Line 1')
-    address_line2 = fields.Char(string='Address Line 2')
-    city = fields.Char(string='City')
-    state = fields.Char(string='State/Province')
-    zip_code = fields.Char(string='ZIP Code')
-    country_id = fields.Many2one(
-        'res.country',
-        string='Country'
-    )
-    
-    # Regional Settings
-    timezone = fields.Selection(
-        selection='_get_timezone_selection',
-        string='Timezone',
-        default=lambda self: self._context.get('tz') or 'UTC',
-        help='Timezone for this property'
-    )
     currency_id = fields.Many2one(
         'res.currency',
-        string='Currency',
-        default=lambda self: self.env.company.currency_id,
-        help='Default currency for this property'
+        string='Default Currency',
+        required=True,
+        default=lambda self: self.env.company.currency_id
     )
     
-    # Contact Information
+    sync_enabled = fields.Boolean(
+        string='Synchronization Enabled',
+        default=True,
+        tracking=True,
+        help='Enable/disable synchronization for this property'
+    )
+    
+    timezone = fields.Selection(
+        selection='_get_timezone_selection',
+        string='Property Timezone',
+        default='UTC',
+        required=True,
+        help='Timezone of the property location'
+    )
+    
+    # Property details from Cloudbeds
+    property_type = fields.Char(string='Property Type')
+    address = fields.Text(string='Address')
+    city = fields.Char(string='City')
+    state = fields.Char(string='State/Province')
+    country_id = fields.Many2one('res.country', string='Country')
+    postal_code = fields.Char(string='Postal Code')
     phone = fields.Char(string='Phone')
     email = fields.Char(string='Email')
     website = fields.Char(string='Website')
     
-    # Cloudbeds Specific
-    property_type = fields.Char(
-        string='Property Type',
-        help='Type of property (Hotel, B&B, etc.)'
-    )
-    room_count = fields.Integer(
-        string='Room Count',
-        help='Total number of rooms in the property'
-    )
-    max_occupancy = fields.Integer(
-        string='Max Occupancy',
-        help='Maximum occupancy of the property'
-    )
-    
-    # Sync Settings
+    # Sync status
     last_sync_date = fields.Datetime(
-        string='Last Sync Date',
-        readonly=True,
-        help='Last successful synchronization with Cloudbeds'
-    )
-    last_sync_status = fields.Selection([
-        ('success', 'Success'),
-        ('error', 'Error'),
-        ('partial', 'Partial'),
-        ('pending', 'Pending')
-    ], string='Last Sync Status', readonly=True)
-    
-    sync_error_count = fields.Integer(
-        string='Sync Error Count',
-        default=0,
-        help='Number of consecutive sync errors'
-    )
-    last_sync_error = fields.Text(
-        string='Last Sync Error',
+        string='Last Synchronization',
         readonly=True
     )
     
-    # Statistics
-    total_reservations = fields.Integer(
-        string='Total Reservations',
-        readonly=True,
-        help='Total number of synced reservations'
-    )
-    total_guests = fields.Integer(
-        string='Total Guests',
-        readonly=True,
-        help='Total number of synced guests'
-    )
-    total_payments = fields.Integer(
-        string='Total Payments',
-        readonly=True,
-        help='Total number of synced payments'
+    last_sync_status = fields.Selection([
+        ('success', 'Success'),
+        ('partial', 'Partial Success'),
+        ('failed', 'Failed')
+    ], string='Last Sync Status', readonly=True)
+    
+    last_sync_message = fields.Text(
+        string='Last Sync Message',
+        readonly=True
     )
     
-    # Relationships
-    webhook_ids = fields.One2many(
-        'cloudconnect.webhook',
-        'property_id',
-        string='Webhooks'
-    )
-    sync_log_ids = fields.One2many(
-        'cloudconnect.sync_log',
-        'property_id',
-        string='Sync Logs'
+    # Related records counts
+    sync_log_count = fields.Integer(
+        string='Sync Logs',
+        compute='_compute_sync_log_count'
     )
     
-    @api.depends('name', 'cloudbeds_id')
-    def _compute_display_name(self):
-        for property_rec in self:
-            if property_rec.name and property_rec.cloudbeds_id:
-                property_rec.display_name = f"{property_rec.name} ({property_rec.cloudbeds_id})"
-            elif property_rec.name:
-                property_rec.display_name = property_rec.name
-            else:
-                property_rec.display_name = property_rec.cloudbeds_id or _("New Property")
+    webhook_count = fields.Integer(
+        string='Active Webhooks',
+        compute='_compute_webhook_count'
+    )
     
-    @api.model
+    # Property settings
+    auto_sync_reservations = fields.Boolean(
+        string='Auto-sync Reservations',
+        default=True,
+        help='Automatically synchronize reservations'
+    )
+    
+    auto_sync_guests = fields.Boolean(
+        string='Auto-sync Guests',
+        default=True,
+        help='Automatically synchronize guest information'
+    )
+    
+    auto_sync_rates = fields.Boolean(
+        string='Auto-sync Rates',
+        default=True,
+        help='Automatically synchronize room rates'
+    )
+    
     def _get_timezone_selection(self):
-        """Get list of available timezones."""
-        return [(tz, tz) for tz in pytz.all_timezones]
-    
-    def get_timezone_object(self):
-        """Get timezone object for this property."""
-        return pytz.timezone(self.timezone or 'UTC')
-    
-    def convert_to_property_timezone(self, dt):
-        """Convert datetime to property timezone."""
-        if not dt:
-            return dt
-        
-        if dt.tzinfo is None:
-            # Assume UTC if no timezone info
-            dt = pytz.UTC.localize(dt)
-        
-        property_tz = self.get_timezone_object()
-        return dt.astimezone(property_tz)
-    
-    def convert_from_property_timezone(self, dt):
-        """Convert datetime from property timezone to UTC."""
-        if not dt:
-            return dt
-        
-        property_tz = self.get_timezone_object()
-        if dt.tzinfo is None:
-            dt = property_tz.localize(dt)
-        
-        return dt.astimezone(pytz.UTC).replace(tzinfo=None)
-    
-    def update_sync_status(self, status, error_message=None):
-        """Update sync status for this property."""
-        self.last_sync_date = fields.Datetime.now()
-        self.last_sync_status = status
-        
-        if status == 'error':
-            self.sync_error_count += 1
-            self.last_sync_error = error_message
-        else:
-            self.sync_error_count = 0
-            self.last_sync_error = False
-    
-    def reset_sync_errors(self):
-        """Reset sync error count and message."""
-        self.sync_error_count = 0
-        self.last_sync_error = False
-    
-    def action_sync_now(self):
-        """Manual sync action for this property."""
+        """Get timezone selection from pytz."""
         try:
-            # This will be implemented when we have the sync service
-            sync_service = self.env['cloudconnect.sync.manager']
-            sync_service.sync_property(self.id)
-            
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Sync Started"),
-                    'message': _("Synchronization has been started for %s") % self.name,
-                    'type': 'info',
-                }
-            }
-        except Exception as e:
-            _logger.error(f"Manual sync failed for property {self.id}: {e}")
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Sync Failed"),
-                    'message': str(e),
-                    'type': 'danger',
-                }
-            }
+            import pytz
+            return [(tz, tz) for tz in pytz.all_timezones]
+        except ImportError:
+            _logger.warning("pytz not installed, using basic timezone list")
+            return [
+                ('UTC', 'UTC'),
+                ('US/Eastern', 'US/Eastern'),
+                ('US/Central', 'US/Central'),
+                ('US/Mountain', 'US/Mountain'),
+                ('US/Pacific', 'US/Pacific'),
+                ('Europe/London', 'Europe/London'),
+                ('Europe/Paris', 'Europe/Paris'),
+                ('Asia/Tokyo', 'Asia/Tokyo'),
+            ]
     
-    def action_reset_sync_errors(self):
-        """Action to reset sync errors."""
-        self.reset_sync_errors()
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'display_notification',
-            'params': {
-                'title': _("Errors Reset"),
-                'message': _("Sync errors have been reset for %s") % self.name,
-                'type': 'success',
-            }
-        }
+    def _compute_sync_log_count(self):
+        """Compute number of sync logs for this property."""
+        SyncLog = self.env['cloudconnect.sync.log']
+        for record in self:
+            record.sync_log_count = SyncLog.search_count([
+                ('property_id', '=', record.id)
+            ])
     
-    def action_view_sync_logs(self):
-        """Action to view sync logs for this property."""
-        return {
-            'name': _('Sync Logs - %s') % self.name,
-            'type': 'ir.actions.act_window',
-            'res_model': 'cloudconnect.sync_log',
-            'view_mode': 'tree,form',
-            'domain': [('property_id', '=', self.id)],
-            'context': {'default_property_id': self.id},
-        }
+    def _compute_webhook_count(self):
+        """Compute number of active webhooks for this property."""
+        for record in self:
+            record.webhook_count = len(record.config_id.webhook_ids.filtered(
+                lambda w: w.active and w.property_id == record
+            ))
     
-    def action_view_webhooks(self):
-        """Action to view webhooks for this property."""
-        return {
-            'name': _('Webhooks - %s') % self.name,
-            'type': 'ir.actions.act_window',
-            'res_model': 'cloudconnect.webhook',
-            'view_mode': 'tree,form',
-            'domain': [('property_id', '=', self.id)],
-            'context': {'default_property_id': self.id},
-        }
-    
-    @api.constrains('cloudbeds_id')
-    def _check_cloudbeds_id_unique(self):
+    @api.constrains('cloudbeds_id', 'config_id')
+    def _check_unique_cloudbeds_id(self):
         """Ensure Cloudbeds ID is unique per configuration."""
-        for property_rec in self:
+        for record in self:
             duplicate = self.search([
-                ('cloudbeds_id', '=', property_rec.cloudbeds_id),
-                ('config_id', '=', property_rec.config_id.id),
-                ('id', '!=', property_rec.id)
+                ('cloudbeds_id', '=', record.cloudbeds_id),
+                ('config_id', '=', record.config_id.id),
+                ('id', '!=', record.id)
             ])
             if duplicate:
                 raise ValidationError(_(
-                    "Property with Cloudbeds ID '%s' already exists in this configuration"
-                ) % property_rec.cloudbeds_id)
+                    "Property with Cloudbeds ID %s already exists in this configuration."
+                ) % record.cloudbeds_id)
     
-    @api.constrains('timezone')
-    def _check_timezone(self):
-        """Validate timezone."""
-        for property_rec in self:
-            if property_rec.timezone and property_rec.timezone not in pytz.all_timezones:
-                raise ValidationError(_("Invalid timezone: %s") % property_rec.timezone)
-    
-    @api.model_create_multi
-    def create(self, vals_list):
-        """Override create to set default values."""
-        for vals in vals_list:
-            if 'timezone' not in vals and self._context.get('tz'):
-                vals['timezone'] = self._context.get('tz')
-        return super().create(vals_list)
-    
-    def write(self, vals):
-        """Override write to handle timezone changes."""
-        result = super().write(vals)
+    def action_sync_now(self):
+        """Trigger immediate synchronization for this property."""
+        self.ensure_one()
         
-        # If timezone changed, we might need to adjust existing data
-        if 'timezone' in vals:
-            _logger.info(f"Timezone changed for property {self.id} to {vals['timezone']}")
-            # TODO: Implement timezone conversion for existing records if needed
+        if not self.sync_enabled:
+            raise ValidationError(_("Synchronization is disabled for this property."))
         
-        return result
+        if not self.config_id.access_token:
+            raise ValidationError(_("No valid access token. Please authenticate first."))
+        
+        # Trigger sync through sync manager
+        sync_manager = self.env['cloudconnect.sync.manager']
+        return sync_manager.sync_property(self)
+    
+    def action_view_sync_logs(self):
+        """View sync logs for this property."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Sync Logs - %s') % self.name,
+            'res_model': 'cloudconnect.sync.log',
+            'view_mode': 'tree,form',
+            'domain': [('property_id', '=', self.id)],
+            'context': {
+                'default_property_id': self.id,
+            }
+        }
+    
+    def action_configure_webhooks(self):
+        """Open webhook configuration for this property."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Webhooks - %s') % self.name,
+            'res_model': 'cloudconnect.webhook',
+            'view_mode': 'tree,form',
+            'domain': [
+                ('config_id', '=', self.config_id.id),
+                ('property_id', '=', self.id)
+            ],
+            'context': {
+                'default_config_id': self.config_id.id,
+                'default_property_id': self.id,
+            }
+        }
+    
+    def toggle_sync_enabled(self):
+        """Toggle synchronization status."""
+        for record in self:
+            record.sync_enabled = not record.sync_enabled
+            
+            # Log the change
+            if record.sync_enabled:
+                record.message_post(
+                    body=_("Synchronization enabled"),
+                    message_type='notification'
+                )
+            else:
+                record.message_post(
+                    body=_("Synchronization disabled"),
+                    message_type='notification'
+                )
+    
+    def update_sync_status(self, status, message=None):
+        """Update synchronization status and log."""
+        self.ensure_one()
+        self.write({
+            'last_sync_date': fields.Datetime.now(),
+            'last_sync_status': status,
+            'last_sync_message': message or ''
+        })
+        
+        # Post message about sync status
+        status_label = dict(self._fields['last_sync_status'].selection).get(status)
+        body = _("Synchronization completed: %s") % status_label
+        if message:
+            body += f"\n{message}"
+        
+        self.message_post(
+            body=body,
+            message_type='notification'
+        )
+    
+    @api.model
+    def sync_properties_from_cloudbeds(self, config_id=None):
+        """Sync property list from Cloudbeds."""
+        Config = self.env['cloudconnect.config']
+        
+        if config_id:
+            configs = Config.browse(config_id)
+        else:
+            configs = Config.search([('active', '=', True)])
+        
+        for config in configs:
+            try:
+                # This would call the API service to get properties
+                api_service = self.env['cloudconnect.api.service']
+                properties = api_service.get_properties(config)
+                
+                for prop_data in properties:
+                    self._create_or_update_property(config, prop_data)
+                    
+            except Exception as e:
+                _logger.error(f"Error syncing properties: {str(e)}")
+    
+    def _create_or_update_property(self, config, property_data):
+        """Create or update a property from Cloudbeds data."""
+        existing = self.search([
+            ('cloudbeds_id', '=', property_data['id']),
+            ('config_id', '=', config.id)
+        ])
+        
+        vals = {
+            'cloudbeds_id': str(property_data['id']),
+            'name': property_data['name'],
+            'config_id': config.id,
+            'property_type': property_data.get('type'),
+            'address': property_data.get('address'),
+            'city': property_data.get('city'),
+            'state': property_data.get('state'),
+            'postal_code': property_data.get('zip'),
+            'phone': property_data.get('phone'),
+            'email': property_data.get('email'),
+            'website': property_data.get('website'),
+        }
+        
+        # Try to match country
+        if property_data.get('country'):
+            country = self.env['res.country'].search([
+                ('code', '=', property_data['country'])
+            ], limit=1)
+            if country:
+                vals['country_id'] = country.id
+        
+        if existing:
+            existing.write(vals)
+            return existing
+        else:
+            return self.create(vals)

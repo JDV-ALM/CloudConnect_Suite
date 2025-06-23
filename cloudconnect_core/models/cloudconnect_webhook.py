@@ -1,558 +1,372 @@
 # -*- coding: utf-8 -*-
 
-import logging
-import hmac
-import hashlib
-import json
-from datetime import datetime, timedelta
 from odoo import models, fields, api, _
-from odoo.exceptions import ValidationError, UserError
+from odoo.exceptions import ValidationError
+import hashlib
+import hmac
+import secrets
+import logging
 
 _logger = logging.getLogger(__name__)
 
 
-class CloudconnectWebhook(models.Model):
+class CloudConnectWebhook(models.Model):
     _name = 'cloudconnect.webhook'
     _description = 'CloudConnect Webhook Configuration'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
     _rec_name = 'display_name'
     _order = 'event_type, property_id'
-
-    # Basic Information
-    display_name = fields.Char(
-        string='Display Name',
-        compute='_compute_display_name',
-        store=True
-    )
-    active = fields.Boolean(
-        string='Active',
-        default=True,
-        help='Set to false to disable this webhook'
-    )
     
-    # Configuration
     config_id = fields.Many2one(
         'cloudconnect.config',
         string='Configuration',
         required=True,
         ondelete='cascade'
     )
+    
     property_id = fields.Many2one(
         'cloudconnect.property',
         string='Property',
-        required=True,
-        ondelete='cascade'
+        domain="[('config_id', '=', config_id)]",
+        help='Property this webhook applies to (optional, leave empty for all properties)'
     )
     
-    # Webhook Details
     event_type = fields.Selection([
-        # Reservations
-        ('reservation_created', 'Reservation Created'),
-        ('reservation_status_changed', 'Reservation Status Changed'),
-        ('reservation_dates_changed', 'Reservation Dates Changed'),
-        ('reservation_accommodation_changed', 'Reservation Accommodation Changed'),
-        ('reservation_deleted', 'Reservation Deleted'),
-        ('reservation_notes_changed', 'Reservation Notes Changed'),
+        # Reservation events
+        ('reservation/created', 'Reservation Created'),
+        ('reservation/status_changed', 'Reservation Status Changed'),
+        ('reservation/dates_changed', 'Reservation Dates Changed'),
+        ('reservation/accommodation_status_changed', 'Room Status Changed'),
+        ('reservation/accommodation_type_changed', 'Room Type Changed'),
+        ('reservation/accommodation_changed', 'Room Assignment Changed'),
+        ('reservation/deleted', 'Reservation Deleted'),
+        ('reservation/notes_changed', 'Reservation Notes Changed'),
+        ('reservation/custom_fields_changed', 'Reservation Custom Fields Changed'),
+        ('reservation/invoice_requested', 'Invoice Requested'),
+        ('reservation/invoice_void_requested', 'Invoice Void Requested'),
         
-        # Guests
-        ('guest_created', 'Guest Created'),
-        ('guest_assigned', 'Guest Assigned'),
-        ('guest_removed', 'Guest Removed'),
-        ('guest_details_changed', 'Guest Details Changed'),
-        ('guest_accommodation_changed', 'Guest Accommodation Changed'),
+        # Guest events
+        ('guest/created', 'Guest Created'),
+        ('guest/assigned', 'Guest Assigned'),
+        ('guest/removed', 'Guest Removed'),
+        ('guest/details_changed', 'Guest Details Changed'),
+        ('guest/accommodation_changed', 'Guest Room Changed'),
         
-        # Payments/Transactions
-        ('transaction_created', 'Transaction Created'),
-        ('payment_created', 'Payment Created'),
-        ('payment_updated', 'Payment Updated'),
-        ('payment_voided', 'Payment Voided'),
+        # Payment events
+        ('transaction/created', 'Transaction Created'),
         
-        # Items
-        ('item_sold', 'Item Sold'),
-        ('item_voided', 'Item Voided'),
-        ('item_updated', 'Item Updated'),
+        # Housekeeping events
+        ('housekeeping/housekeeping_reservation_status_changed', 'Housekeeping Status Changed'),
+        ('housekeeping/housekeeping_room_occupancy_status_changed', 'Room Occupancy Changed'),
+        ('housekeeping/room_condition_changed', 'Room Condition Changed'),
         
-        # Room Management
-        ('room_checkin', 'Room Check-in'),
-        ('room_checkout', 'Room Check-out'),
-        ('roomblock_created', 'Room Block Created'),
-        ('roomblock_removed', 'Room Block Removed'),
+        # Room block events
+        ('roomblock/created', 'Room Block Created'),
+        ('roomblock/removed', 'Room Block Removed'),
+        ('roomblock/details_changed', 'Room Block Changed'),
         
-        # Housekeeping
-        ('housekeeping_status_changed', 'Housekeeping Status Changed'),
-        ('room_condition_changed', 'Room Condition Changed'),
+        # Allotment events
+        ('allotmentBlock/created', 'Allotment Block Created'),
+        ('allotmentBlock/updated', 'Allotment Block Updated'),
+        ('allotmentBlock/deleted', 'Allotment Block Deleted'),
+        ('allotmentBlock/capacity_changed_for_reservation', 'Allotment Capacity Changed'),
         
-        # Integration
-        ('integration_appstate_changed', 'App State Changed'),
-        ('integration_appsettings_changed', 'App Settings Changed'),
-    ], string='Event Type', required=True, help='Type of event to listen for')
+        # Integration events
+        ('integration/appstate_changed', 'App State Changed'),
+        ('integration/appsettings_changed', 'App Settings Changed'),
+        
+        # Rate events
+        ('api_queue_task/rate_status_changed', 'Rate Update Status Changed'),
+        
+        # Night audit
+        ('night_audit/completed', 'Night Audit Completed'),
+    ], string='Event Type', required=True, tracking=True)
+    
+    event_object = fields.Char(
+        string='Event Object',
+        compute='_compute_event_details',
+        store=True
+    )
+    
+    event_action = fields.Char(
+        string='Event Action',
+        compute='_compute_event_details',
+        store=True
+    )
     
     endpoint_url = fields.Char(
         string='Endpoint URL',
         compute='_compute_endpoint_url',
-        help='Generated webhook endpoint URL'
+        store=True,
+        help='The URL where webhook notifications will be sent'
     )
+    
     secret_key = fields.Char(
         string='Secret Key',
         default=lambda self: self._generate_secret_key(),
-        help='Secret key for HMAC validation'
+        help='Secret key for webhook validation',
+        groups='cloudconnect_core.group_cloudconnect_manager'
     )
     
-    # Status and Statistics
-    status = fields.Selection([
-        ('active', 'Active'),
-        ('inactive', 'Inactive'),
-        ('error', 'Error')
-    ], string='Status', default='active')
+    active = fields.Boolean(
+        string='Active',
+        default=True,
+        tracking=True
+    )
     
+    # Cloudbeds webhook info
+    cloudbeds_webhook_id = fields.Char(
+        string='Cloudbeds Webhook ID',
+        readonly=True,
+        help='ID of the webhook subscription in Cloudbeds'
+    )
+    
+    # Statistics
     last_received = fields.Datetime(
         string='Last Event Received',
         readonly=True
     )
-    total_events_received = fields.Integer(
-        string='Total Events Received',
-        readonly=True,
-        default=0
-    )
-    total_events_processed = fields.Integer(
-        string='Total Events Processed',
-        readonly=True,
-        default=0
-    )
-    total_events_failed = fields.Integer(
-        string='Total Events Failed',
+    
+    total_received = fields.Integer(
+        string='Total Events',
         readonly=True,
         default=0
     )
     
-    # Error Handling
-    max_retries = fields.Integer(
-        string='Max Retries',
-        default=5,
-        help='Maximum number of retry attempts for failed events'
+    total_errors = fields.Integer(
+        string='Total Errors',
+        readonly=True,
+        default=0
     )
-    retry_delay = fields.Integer(
-        string='Retry Delay (seconds)',
-        default=60,
-        help='Base delay between retry attempts'
-    )
+    
     last_error = fields.Text(
         string='Last Error',
         readonly=True
     )
-    error_count = fields.Integer(
-        string='Error Count',
-        readonly=True,
-        default=0
+    
+    display_name = fields.Char(
+        string='Display Name',
+        compute='_compute_display_name',
+        store=True
     )
     
-    # Cloudbeds Integration
-    cloudbeds_subscription_id = fields.Char(
-        string='Cloudbeds Subscription ID',
-        readonly=True,
-        help='Subscription ID returned by Cloudbeds API'
-    )
-    registered_at = fields.Datetime(
-        string='Registered At',
-        readonly=True,
-        help='When this webhook was registered with Cloudbeds'
-    )
+    @api.depends('event_type')
+    def _compute_event_details(self):
+        """Extract object and action from event type."""
+        for record in self:
+            if record.event_type and '/' in record.event_type:
+                parts = record.event_type.split('/')
+                record.event_object = parts[0]
+                record.event_action = parts[1]
+            else:
+                record.event_object = False
+                record.event_action = False
+    
+    @api.depends('config_id', 'property_id', 'event_type')
+    def _compute_endpoint_url(self):
+        """Compute the endpoint URL for this webhook."""
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        for record in self:
+            if record.property_id:
+                record.endpoint_url = f"{base_url}/cloudconnect/webhook/{record.property_id.cloudbeds_id}/{record.event_type}"
+            else:
+                record.endpoint_url = f"{base_url}/cloudconnect/webhook/all/{record.event_type}"
     
     @api.depends('event_type', 'property_id')
     def _compute_display_name(self):
-        for webhook in self:
-            if webhook.event_type and webhook.property_id:
-                event_label = dict(webhook._fields['event_type'].selection).get(webhook.event_type, webhook.event_type)
-                webhook.display_name = f"{webhook.property_id.name} - {event_label}"
+        """Compute display name for webhook."""
+        for record in self:
+            event_name = dict(self._fields['event_type'].selection).get(record.event_type, record.event_type)
+            if record.property_id:
+                record.display_name = f"{event_name} - {record.property_id.name}"
             else:
-                webhook.display_name = _("New Webhook")
+                record.display_name = f"{event_name} - All Properties"
     
-    @api.depends('property_id', 'event_type')
-    def _compute_endpoint_url(self):
-        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-        for webhook in self:
-            if webhook.property_id and webhook.event_type:
-                webhook.endpoint_url = f"{base_url}/cloudconnect/webhook/{webhook.property_id.cloudbeds_id}/{webhook.event_type}"
-            else:
-                webhook.endpoint_url = False
-    
-    @api.model
     def _generate_secret_key(self):
-        """Generate a random secret key for webhook validation."""
-        import secrets
+        """Generate a secure random secret key."""
         return secrets.token_urlsafe(32)
     
-    def validate_webhook_signature(self, payload, signature):
-        """Validate webhook HMAC signature."""
-        if not self.secret_key or not signature:
-            return False
-        
-        try:
-            expected_signature = hmac.new(
-                self.secret_key.encode('utf-8'),
-                payload.encode('utf-8') if isinstance(payload, str) else payload,
-                hashlib.sha256
-            ).hexdigest()
-            
-            # Compare signatures securely
-            return hmac.compare_digest(signature, expected_signature)
-        except Exception as e:
-            _logger.error(f"Webhook signature validation error: {e}")
-            return False
-    
-    def process_webhook_event(self, payload, headers=None):
-        """Process incoming webhook event."""
-        try:
-            # Validate signature if provided
-            signature = headers.get('X-Signature') if headers else None
-            if signature and not self.validate_webhook_signature(payload, signature):
-                _logger.warning(f"Invalid webhook signature for {self.event_type}")
-                self.error_count += 1
-                self.last_error = "Invalid webhook signature"
-                return False
-            
-            # Parse payload
-            if isinstance(payload, str):
-                event_data = json.loads(payload)
-            else:
-                event_data = payload
-            
-            # Update statistics
-            self.total_events_received += 1
-            self.last_received = fields.Datetime.now()
-            
-            # Process based on event type
-            result = self._process_event_by_type(event_data)
-            
-            if result:
-                self.total_events_processed += 1
-                self.error_count = 0
-                self.last_error = False
-            else:
-                self.total_events_failed += 1
-                self.error_count += 1
-            
-            return result
-            
-        except json.JSONDecodeError as e:
-            error_msg = f"Invalid JSON payload: {e}"
-            _logger.error(error_msg)
-            self.last_error = error_msg
-            self.error_count += 1
-            return False
-        except Exception as e:
-            error_msg = f"Webhook processing error: {e}"
-            _logger.error(error_msg)
-            self.last_error = error_msg
-            self.error_count += 1
-            return False
-    
-    def _process_event_by_type(self, event_data):
-        """Process event based on its type."""
-        try:
-            # Log the event
-            log_vals = {
-                'property_id': self.property_id.id,
-                'operation_type': 'webhook',
-                'model_name': self._get_target_model_for_event(),
-                'cloudbeds_id': self._extract_object_id(event_data),
-                'status': 'pending',
-                'sync_date': fields.Datetime.now(),
-                'request_id': event_data.get('timestamp', str(datetime.now().timestamp())),
-                'webhook_id': self.id,
-                'event_data': json.dumps(event_data)
-            }
-            
-            sync_log = self.env['cloudconnect.sync_log'].create(log_vals)
-            
-            # Process the event based on type
-            processor_method = getattr(self, f'_process_{self.event_type}', None)
-            if processor_method:
-                result = processor_method(event_data, sync_log)
-            else:
-                # Generic processing - just log the event
-                sync_log.status = 'success'
-                sync_log.error_message = False
-                result = True
-            
-            return result
-            
-        except Exception as e:
-            _logger.error(f"Event processing error for {self.event_type}: {e}")
-            if 'sync_log' in locals():
-                sync_log.status = 'error'
-                sync_log.error_message = str(e)
-            return False
-    
-    def _get_target_model_for_event(self):
-        """Get target model name based on event type."""
-        event_model_map = {
-            'reservation_created': 'sale.order',
-            'reservation_status_changed': 'sale.order',
-            'reservation_dates_changed': 'sale.order',
-            'reservation_accommodation_changed': 'sale.order',
-            'reservation_deleted': 'sale.order',
-            'reservation_notes_changed': 'sale.order',
-            'guest_created': 'res.partner',
-            'guest_assigned': 'res.partner',
-            'guest_removed': 'res.partner',
-            'guest_details_changed': 'res.partner',
-            'guest_accommodation_changed': 'res.partner',
-            'transaction_created': 'account.payment',
-            'payment_created': 'account.payment',
-            'payment_updated': 'account.payment',
-            'payment_voided': 'account.payment',
-            'item_sold': 'product.template',
-            'item_voided': 'product.template',
-            'item_updated': 'product.template',
-        }
-        return event_model_map.get(self.event_type, 'unknown')
-    
-    def _extract_object_id(self, event_data):
-        """Extract object ID from event data."""
-        id_fields = ['reservationID', 'reservationId', 'guestID', 'guestId', 
-                    'transactionID', 'transactionId', 'itemID', 'itemId',
-                    'roomID', 'roomId', 'propertyID', 'propertyId']
-        
-        for field in id_fields:
-            if field in event_data:
-                return str(event_data[field])
-        
-        return 'unknown'
-    
-    def register_with_cloudbeds(self):
-        """Register this webhook with Cloudbeds API."""
-        try:
-            config = self.config_id
-            access_token = config.get_access_token()
-            
-            if not access_token:
-                raise UserError(_("No access token available for configuration"))
-            
-            # Prepare webhook registration data
-            data = {
-                'propertyID': self.property_id.cloudbeds_id,
-                'object': self._get_cloudbeds_object(),
-                'action': self._get_cloudbeds_action(),
-                'endpointUrl': self.endpoint_url
-            }
-            
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-            
-            import requests
-            response = requests.post(
-                f"{config.api_endpoint}/postWebhook",
-                data=data,
-                headers=headers,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                if result.get('success'):
-                    # Cloudbeds doesn't return subscription ID in postWebhook
-                    # We'll generate one based on response or use our own
-                    self.cloudbeds_subscription_id = f"cb_{self.id}_{datetime.now().timestamp()}"
-                    self.registered_at = fields.Datetime.now()
-                    self.status = 'active'
-                    self.last_error = False
-                    return True
-                else:
-                    error_msg = result.get('message', 'Unknown error')
-                    self.last_error = error_msg
-                    self.status = 'error'
-                    return False
-            else:
-                error_msg = f"HTTP {response.status_code}: {response.text}"
-                self.last_error = error_msg
-                self.status = 'error'
-                return False
-                
-        except Exception as e:
-            error_msg = f"Webhook registration error: {e}"
-            _logger.error(error_msg)
-            self.last_error = error_msg
-            self.status = 'error'
-            return False
-    
-    def unregister_from_cloudbeds(self):
-        """Unregister this webhook from Cloudbeds API."""
-        try:
-            if not self.cloudbeds_subscription_id:
-                return True  # Already unregistered
-            
-            config = self.config_id
-            access_token = config.get_access_token()
-            
-            if not access_token:
-                _logger.warning("No access token available for webhook unregistration")
-                return True  # Can't unregister, but that's ok
-            
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-            }
-            
-            import requests
-            response = requests.delete(
-                f"{config.api_endpoint}/deleteWebhook",
-                params={'subscriptionID': self.cloudbeds_subscription_id},
-                headers=headers,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                self.cloudbeds_subscription_id = False
-                self.status = 'inactive'
-                return True
-            else:
-                _logger.warning(f"Failed to unregister webhook: HTTP {response.status_code}")
-                return True  # Don't block deletion
-                
-        except Exception as e:
-            _logger.error(f"Webhook unregistration error: {e}")
-            return True  # Don't block deletion
-    
-    def _get_cloudbeds_object(self):
-        """Get Cloudbeds object type from event type."""
-        if self.event_type.startswith('reservation_'):
-            return 'reservation'
-        elif self.event_type.startswith('guest_'):
-            return 'guest'
-        elif self.event_type.startswith('transaction_') or self.event_type.startswith('payment_'):
-            return 'transaction'
-        elif self.event_type.startswith('item_'):
-            return 'item'
-        elif self.event_type.startswith('room'):
-            return 'room'
-        elif self.event_type.startswith('housekeeping_'):
-            return 'housekeeping'
-        elif self.event_type.startswith('integration_'):
-            return 'integration'
-        else:
-            return 'unknown'
-    
-    def _get_cloudbeds_action(self):
-        """Get Cloudbeds action from event type."""
-        action_map = {
-            'reservation_created': 'created',
-            'reservation_status_changed': 'status_changed',
-            'reservation_dates_changed': 'dates_changed',
-            'reservation_accommodation_changed': 'accommodation_changed',
-            'reservation_deleted': 'deleted',
-            'reservation_notes_changed': 'notes_changed',
-            'guest_created': 'created',
-            'guest_assigned': 'assigned',
-            'guest_removed': 'removed',
-            'guest_details_changed': 'details_changed',
-            'guest_accommodation_changed': 'accommodation_changed',
-            'transaction_created': 'created',
-            'payment_created': 'created',
-            'payment_updated': 'updated',
-            'payment_voided': 'voided',
-            'item_sold': 'sold',
-            'item_voided': 'voided',
-            'item_updated': 'updated',
-        }
-        return action_map.get(self.event_type, 'unknown')
-    
-    def action_register_webhook(self):
-        """Action to register webhook with Cloudbeds."""
-        if self.register_with_cloudbeds():
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Webhook Registered"),
-                    'message': _("Webhook has been successfully registered with Cloudbeds"),
-                    'type': 'success',
-                }
-            }
-        else:
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Registration Failed"),
-                    'message': self.last_error or _("Failed to register webhook"),
-                    'type': 'danger',
-                }
-            }
-    
-    def action_test_webhook(self):
-        """Action to test webhook endpoint."""
-        # Create a test event
-        test_event = {
-            'version': '1.0',
-            'timestamp': datetime.now().timestamp(),
-            'event': f'{self._get_cloudbeds_object()}/{self._get_cloudbeds_action()}',
-            'propertyID': int(self.property_id.cloudbeds_id),
-            'test': True
-        }
-        
-        result = self.process_webhook_event(test_event)
-        
-        if result:
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Test Successful"),
-                    'message': _("Webhook test completed successfully"),
-                    'type': 'success',
-                }
-            }
-        else:
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Test Failed"),
-                    'message': self.last_error or _("Webhook test failed"),
-                    'type': 'danger',
-                }
-            }
-    
-    @api.constrains('event_type', 'property_id')
+    @api.constrains('event_type', 'property_id', 'config_id')
     def _check_unique_webhook(self):
-        """Ensure one webhook per event type per property."""
-        for webhook in self:
-            duplicate = self.search([
-                ('event_type', '=', webhook.event_type),
-                ('property_id', '=', webhook.property_id.id),
-                ('id', '!=', webhook.id),
-                ('active', '=', True)
-            ])
+        """Ensure webhook is unique per event type and property."""
+        for record in self:
+            domain = [
+                ('event_type', '=', record.event_type),
+                ('config_id', '=', record.config_id.id),
+                ('id', '!=', record.id)
+            ]
+            
+            if record.property_id:
+                domain.append(('property_id', '=', record.property_id.id))
+            else:
+                domain.append(('property_id', '=', False))
+            
+            duplicate = self.search(domain)
             if duplicate:
                 raise ValidationError(_(
-                    "An active webhook for event '%s' already exists for property '%s'"
-                ) % (webhook.event_type, webhook.property_id.name))
+                    "A webhook for event '%s' already exists for this property/configuration."
+                ) % record.event_type)
     
-    @api.model_create_multi
-    def create(self, vals_list):
-        """Override create to auto-register webhook."""
-        webhooks = super().create(vals_list)
-        for webhook in webhooks:
-            if webhook.active:
-                webhook.register_with_cloudbeds()
-        return webhooks
-    
-    def write(self, vals):
-        """Override write to handle activation/deactivation."""
-        if 'active' in vals:
-            for webhook in self:
-                if vals['active'] and not webhook.active:
-                    # Being activated
-                    webhook.register_with_cloudbeds()
-                elif not vals['active'] and webhook.active:
-                    # Being deactivated
-                    webhook.unregister_from_cloudbeds()
+    def validate_webhook_signature(self, payload, signature):
+        """Validate webhook signature using HMAC."""
+        self.ensure_one()
         
-        return super().write(vals)
+        if not self.secret_key:
+            _logger.warning(f"No secret key configured for webhook {self.id}")
+            return False
+        
+        expected_signature = hmac.new(
+            self.secret_key.encode(),
+            payload.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        
+        return hmac.compare_digest(signature, expected_signature)
+    
+    def register_with_cloudbeds(self):
+        """Register this webhook with Cloudbeds."""
+        self.ensure_one()
+        
+        if not self.config_id.access_token:
+            raise ValidationError(_("No valid access token. Please authenticate first."))
+        
+        if not self.event_object or not self.event_action:
+            raise ValidationError(_("Invalid event type configuration."))
+        
+        # Call API service to register webhook
+        api_service = self.env['cloudconnect.api.service']
+        
+        params = {
+            'object': self.event_object,
+            'action': self.event_action,
+            'endpointUrl': self.endpoint_url,
+        }
+        
+        if self.property_id:
+            params['propertyID'] = self.property_id.cloudbeds_id
+        
+        try:
+            result = api_service.post_webhook(self.config_id, params)
+            
+            if result.get('success') and result.get('data'):
+                self.cloudbeds_webhook_id = result['data'].get('id')
+                self.message_post(
+                    body=_("Webhook registered successfully with Cloudbeds"),
+                    message_type='notification'
+                )
+                return True
+            else:
+                raise ValidationError(_("Failed to register webhook: %s") % result.get('message', 'Unknown error'))
+                
+        except Exception as e:
+            raise ValidationError(_("Error registering webhook: %s") % str(e))
+    
+    def unregister_from_cloudbeds(self):
+        """Unregister this webhook from Cloudbeds."""
+        self.ensure_one()
+        
+        if not self.cloudbeds_webhook_id:
+            return True
+        
+        # Call API service to delete webhook
+        api_service = self.env['cloudconnect.api.service']
+        
+        try:
+            result = api_service.delete_webhook(self.config_id, self.cloudbeds_webhook_id)
+            
+            if result.get('success'):
+                self.cloudbeds_webhook_id = False
+                self.message_post(
+                    body=_("Webhook unregistered from Cloudbeds"),
+                    message_type='notification'
+                )
+                return True
+            else:
+                _logger.error(f"Failed to unregister webhook: {result.get('message', 'Unknown error')}")
+                return False
+                
+        except Exception as e:
+            _logger.error(f"Error unregistering webhook: {str(e)}")
+            return False
+    
+    def action_register(self):
+        """Action to register webhook."""
+        self.ensure_one()
+        return self.register_with_cloudbeds()
+    
+    def action_unregister(self):
+        """Action to unregister webhook."""
+        self.ensure_one()
+        return self.unregister_from_cloudbeds()
+    
+    def action_regenerate_secret(self):
+        """Regenerate the secret key."""
+        self.ensure_one()
+        self.secret_key = self._generate_secret_key()
+        self.message_post(
+            body=_("Secret key regenerated"),
+            message_type='notification'
+        )
+    
+    def record_event_received(self, success=True, error_message=None):
+        """Record that an event was received."""
+        self.ensure_one()
+        
+        vals = {
+            'last_received': fields.Datetime.now(),
+            'total_received': self.total_received + 1,
+        }
+        
+        if not success:
+            vals['total_errors'] = self.total_errors + 1
+            vals['last_error'] = error_message or 'Unknown error'
+        
+        self.write(vals)
+    
+    @api.model
+    def process_webhook_event(self, event_type, property_id, data):
+        """Process incoming webhook event."""
+        # Find matching webhook configuration
+        domain = [
+            ('event_type', '=', event_type),
+            ('active', '=', True)
+        ]
+        
+        if property_id and property_id != 'all':
+            property = self.env['cloudconnect.property'].search([
+                ('cloudbeds_id', '=', property_id)
+            ], limit=1)
+            if property:
+                domain.append(('property_id', '=', property.id))
+        else:
+            domain.append(('property_id', '=', False))
+        
+        webhook = self.search(domain, limit=1)
+        
+        if not webhook:
+            _logger.warning(f"No active webhook found for event {event_type}, property {property_id}")
+            return False
+        
+        try:
+            # Process through webhook processor service
+            processor = self.env['cloudconnect.webhook.processor']
+            processor.process_event(webhook, data)
+            
+            webhook.record_event_received(success=True)
+            return True
+            
+        except Exception as e:
+            _logger.error(f"Error processing webhook event: {str(e)}")
+            webhook.record_event_received(success=False, error_message=str(e))
+            return False
     
     def unlink(self):
-        """Override unlink to unregister webhooks."""
-        for webhook in self:
-            webhook.unregister_from_cloudbeds()
+        """Unregister webhooks before deletion."""
+        for record in self:
+            if record.cloudbeds_webhook_id:
+                try:
+                    record.unregister_from_cloudbeds()
+                except Exception as e:
+                    _logger.error(f"Error unregistering webhook on deletion: {str(e)}")
+        
         return super().unlink()

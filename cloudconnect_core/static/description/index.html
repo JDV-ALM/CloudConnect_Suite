@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .header h1 {
+            color: #2c3e50;
+            font-size: 36px;
+            margin-bottom: 10px;
+        }
+        .header p {
+            color: #7f8c8d;
+            font-size: 18px;
+        }
+        .feature {
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+        }
+        .feature h3 {
+            color: #34495e;
+            margin-bottom: 10px;
+        }
+        .feature-icon {
+            float: left;
+            margin-right: 20px;
+            font-size: 48px;
+            color: #3498db;
+        }
+        .screenshots {
+            margin: 40px 0;
+        }
+        .screenshot {
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .screenshot img {
+            width: 100%;
+            height: auto;
+        }
+        .benefits {
+            background-color: #ecf0f1;
+            padding: 30px;
+            border-radius: 8px;
+            margin: 40px 0;
+        }
+        .benefits h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+        .benefits ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        .benefits li {
+            padding: 10px 0;
+            border-bottom: 1px solid #bdc3c7;
+        }
+        .benefits li:last-child {
+            border-bottom: none;
+        }
+        .cta {
+            text-align: center;
+            margin: 40px 0;
+            padding: 40px;
+            background-color: #3498db;
+            color: white;
+            border-radius: 8px;
+        }
+        .cta h2 {
+            margin-bottom: 20px;
+        }
+        .cta p {
+            font-size: 18px;
+            margin-bottom: 30px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 15px 30px;
+            background-color: white;
+            color: #3498db;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 18px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>CloudConnect Core</h1>
+            <p>Seamless Integration with Cloudbeds PMS</p>
+        </div>
+
+        <div class="feature">
+            <div class="feature-icon">🔐</div>
+            <h3>Secure OAuth 2.0 Authentication</h3>
+            <p>Connect securely with Cloudbeds using industry-standard OAuth 2.0 authentication. Your credentials are encrypted and tokens are automatically refreshed to ensure uninterrupted service.</p>
+            <div style="clear: both;"></div>
+        </div>
+
+        <div class="feature">
+            <div class="feature-icon">🏨</div>
+            <h3>Multi-Property Management</h3>
+            <p>Manage multiple hotel properties from a single Odoo instance. Each property can be configured independently with its own synchronization settings and webhooks.</p>
+            <div style="clear: both;"></div>
+        </div>
+
+        <div class="feature">
+            <div class="feature-icon">🔄</div>
+            <h3>Real-time Synchronization</h3>
+            <p>Keep your data in sync with automatic and manual synchronization options. Configure webhooks to receive instant updates when changes occur in Cloudbeds.</p>
+            <div style="clear: both;"></div>
+        </div>
+
+        <div class="feature">
+            <div class="feature-icon">📊</div>
+            <h3>Comprehensive Dashboard</h3>
+            <p>Monitor your integration status, view recent activities, and track synchronization performance from a centralized dashboard.</p>
+            <div style="clear: both;"></div>
+        </div>
+
+        <div class="benefits">
+            <h2>Key Benefits</h2>
+            <ul>
+                <li>✅ <strong>Easy Setup:</strong> Step-by-step wizard guides you through the configuration process</li>
+                <li>✅ <strong>Automatic Token Management:</strong> Never worry about expired tokens with automatic refresh</li>
+                <li>✅ <strong>Rate Limiting:</strong> Built-in rate limiting prevents API throttling</li>
+                <li>✅ <strong>Error Recovery:</strong> Automatic retry with exponential backoff for failed operations</li>
+                <li>✅ <strong>Detailed Logging:</strong> Track every API call and webhook event for troubleshooting</li>
+                <li>✅ <strong>Extensible Architecture:</strong> Core module provides foundation for additional functionality</li>
+            </ul>
+        </div>
+
+        <div class="feature">
+            <h3>Supported Cloudbeds Features</h3>
+            <p>CloudConnect Core provides the infrastructure to integrate with:</p>
+            <ul>
+                <li>🏨 Properties and Hotel Details</li>
+                <li>📅 Reservations and Bookings</li>
+                <li>👥 Guest Management</li>
+                <li>🏠 Room Types and Availability</li>
+                <li>💰 Rates and Pricing</li>
+                <li>💳 Payments and Transactions</li>
+                <li>🧹 Housekeeping Status</li>
+                <li>📊 Custom Fields</li>
+            </ul>
+        </div>
+
+        <div class="feature">
+            <h3>Webhook Events</h3>
+            <p>Receive real-time notifications for:</p>
+            <ul>
+                <li>Reservation created, modified, or cancelled</li>
+                <li>Guest check-in and check-out</li>
+                <li>Room assignments and changes</li>
+                <li>Payment transactions</li>
+                <li>Housekeeping updates</li>
+                <li>And many more...</li>
+            </ul>
+        </div>
+
+        <div class="cta">
+            <h2>Ready to Connect Your Hotel to Odoo?</h2>
+            <p>CloudConnect Core is the foundation for a complete hotel management integration. Install now and start synchronizing your Cloudbeds data with Odoo.</p>
+            <a href="#" class="btn">Get Started</a>
+        </div>
+
+        <div class="feature">
+            <h3>Technical Specifications</h3>
+            <ul>
+                <li><strong>Odoo Version:</strong> 17.0+</li>
+                <li><strong>Dependencies:</strong> base, web, mail</li>
+                <li><strong>API Version:</strong> Cloudbeds API v1.2</li>
+                <li><strong>License:</strong> LGPL-3</li>
+            </ul>
+        </div>
+
+        <div class="feature">
+            <h3>Support</h3>
+            <p>For support, documentation, and updates, please visit our support portal or contact our technical team. We're here to help you make the most of your CloudConnect integration.</p>
+        </div>
+    </div>
+</body>
+</html>

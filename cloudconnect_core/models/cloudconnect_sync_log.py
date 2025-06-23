@@ -1,564 +1,393 @@
 # -*- coding: utf-8 -*-
 
-import logging
-import json
-from datetime import datetime, timedelta
 from odoo import models, fields, api, _
-from odoo.exceptions import ValidationError
+from datetime import datetime, timedelta
+import json
+import logging
 
 _logger = logging.getLogger(__name__)
 
 
-class CloudconnectSyncLog(models.Model):
-    _name = 'cloudconnect.sync_log'
+class CloudConnectSyncLog(models.Model):
+    _name = 'cloudconnect.sync.log'
     _description = 'CloudConnect Synchronization Log'
+    _order = 'sync_date desc'
     _rec_name = 'display_name'
-    _order = 'sync_date desc, id desc'
-
-    # Basic Information
-    display_name = fields.Char(
-        string='Display Name',
-        compute='_compute_display_name',
-        store=True
-    )
     
-    # Configuration References
-    property_id = fields.Many2one(
-        'cloudconnect.property',
-        string='Property',
-        required=True,
-        ondelete='cascade',
-        index=True
-    )
-    config_id = fields.Many2one(
-        'cloudconnect.config',
-        string='Configuration',
-        related='property_id.config_id',
-        store=True
-    )
-    
-    # Sync Operation Details
+    # Basic fields
     operation_type = fields.Selection([
         ('manual', 'Manual Sync'),
-        ('automatic', 'Automatic Sync'),
-        ('webhook', 'Webhook Event'),
-        ('cron', 'Scheduled Job'),
-        ('api_call', 'Direct API Call'),
-        ('import', 'Data Import'),
-        ('export', 'Data Export'),
+        ('scheduled', 'Scheduled Sync'),
+        ('webhook', 'Webhook Triggered'),
+        ('api_call', 'API Call'),
+        ('token_refresh', 'Token Refresh'),
     ], string='Operation Type', required=True, index=True)
     
     model_name = fields.Char(
-        string='Model Name',
+        string='Model',
         required=True,
         index=True,
         help='Odoo model that was synchronized'
     )
+    
+    action = fields.Selection([
+        ('create', 'Create'),
+        ('update', 'Update'),
+        ('delete', 'Delete'),
+        ('sync', 'Sync'),
+        ('fetch', 'Fetch'),
+    ], string='Action', required=True)
+    
     cloudbeds_id = fields.Char(
         string='Cloudbeds ID',
         index=True,
-        help='ID of the object in Cloudbeds system'
-    )
-    odoo_record_id = fields.Integer(
-        string='Odoo Record ID',
-        help='ID of the corresponding record in Odoo'
+        help='ID of the object in Cloudbeds'
     )
     
-    # Status and Timing
+    odoo_id = fields.Integer(
+        string='Odoo ID',
+        help='ID of the object in Odoo'
+    )
+    
     status = fields.Selection([
         ('pending', 'Pending'),
-        ('processing', 'Processing'),
         ('success', 'Success'),
         ('error', 'Error'),
-        ('partial', 'Partial Success'),
-        ('skipped', 'Skipped'),
-        ('retry', 'Retry Scheduled'),
+        ('warning', 'Warning'),
     ], string='Status', required=True, default='pending', index=True)
     
+    # Related records
+    config_id = fields.Many2one(
+        'cloudconnect.config',
+        string='Configuration',
+        required=True,
+        ondelete='cascade'
+    )
+    
+    property_id = fields.Many2one(
+        'cloudconnect.property',
+        string='Property',
+        index=True
+    )
+    
+    # Details
+    error_message = fields.Text(
+        string='Error Message'
+    )
+    
+    warning_message = fields.Text(
+        string='Warning Message'
+    )
+    
+    request_data = fields.Text(
+        string='Request Data',
+        help='JSON data sent in the request'
+    )
+    
+    response_data = fields.Text(
+        string='Response Data',
+        help='JSON data received in the response'
+    )
+    
+    # API tracking
+    request_id = fields.Char(
+        string='X-Request-ID',
+        index=True,
+        help='Request ID for tracking with Cloudbeds support'
+    )
+    
+    api_endpoint = fields.Char(
+        string='API Endpoint',
+        help='API endpoint that was called'
+    )
+    
+    http_status = fields.Integer(
+        string='HTTP Status Code'
+    )
+    
+    # Timing
     sync_date = fields.Datetime(
         string='Sync Date',
         required=True,
         default=fields.Datetime.now,
         index=True
     )
-    started_at = fields.Datetime(
-        string='Started At',
-        help='When the sync operation started'
-    )
-    completed_at = fields.Datetime(
-        string='Completed At',
-        help='When the sync operation completed'
-    )
-    duration_ms = fields.Integer(
-        string='Duration (ms)',
-        compute='_compute_duration',
-        store=True,
-        help='Duration of the sync operation in milliseconds'
+    
+    duration = fields.Float(
+        string='Duration (sec)',
+        help='Time taken to complete the operation'
     )
     
-    # Error Handling
-    error_message = fields.Text(
-        string='Error Message',
-        help='Detailed error message if sync failed'
-    )
-    error_code = fields.Char(
-        string='Error Code',
-        help='Error code from Cloudbeds API'
-    )
+    # Retry information
     retry_count = fields.Integer(
         string='Retry Count',
-        default=0,
-        help='Number of retry attempts'
+        default=0
     )
+    
     max_retries = fields.Integer(
         string='Max Retries',
-        default=3,
-        help='Maximum number of retry attempts'
-    )
-    next_retry_at = fields.Datetime(
-        string='Next Retry At',
-        help='When the next retry is scheduled'
+        default=3
     )
     
-    # Request/Response Details
-    request_id = fields.Char(
-        string='Request ID',
-        help='X-Request-ID for tracking with Cloudbeds support'
-    )
-    http_status_code = fields.Integer(
-        string='HTTP Status Code',
-        help='HTTP status code from API response'
-    )
-    api_endpoint = fields.Char(
-        string='API Endpoint',
-        help='Cloudbeds API endpoint that was called'
-    )
-    request_method = fields.Selection([
-        ('GET', 'GET'),
-        ('POST', 'POST'),
-        ('PUT', 'PUT'),
-        ('PATCH', 'PATCH'),
-        ('DELETE', 'DELETE'),
-    ], string='Request Method')
-    
-    # Data Payload (for debugging)
-    request_data = fields.Text(
-        string='Request Data',
-        help='JSON data sent to Cloudbeds (for debugging)'
-    )
-    response_data = fields.Text(
-        string='Response Data',
-        help='JSON response from Cloudbeds (for debugging)'
+    next_retry = fields.Datetime(
+        string='Next Retry'
     )
     
-    # Webhook Specific
-    webhook_id = fields.Many2one(
-        'cloudconnect.webhook',
-        string='Webhook',
-        help='Webhook that triggered this sync (if applicable)'
-    )
-    event_type = fields.Char(
-        string='Event Type',
-        help='Type of webhook event (if applicable)'
-    )
-    event_data = fields.Text(
-        string='Event Data',
-        help='Original webhook event data'
+    # Display
+    display_name = fields.Char(
+        string='Display Name',
+        compute='_compute_display_name',
+        store=True
     )
     
-    # Batch Processing
-    batch_id = fields.Char(
-        string='Batch ID',
-        index=True,
-        help='Group multiple related sync operations'
-    )
-    batch_size = fields.Integer(
-        string='Batch Size',
-        help='Total number of records in this batch'
-    )
-    batch_sequence = fields.Integer(
-        string='Batch Sequence',
-        help='Position of this record in the batch'
+    # Summary for dashboard
+    summary = fields.Text(
+        string='Summary',
+        compute='_compute_summary'
     )
     
-    # Additional Metadata
-    user_id = fields.Many2one(
-        'res.users',
-        string='User',
-        default=lambda self: self.env.user,
-        help='User who initiated the sync operation'
-    )
-    source_system = fields.Selection([
-        ('odoo', 'Odoo'),
-        ('cloudbeds', 'Cloudbeds'),
-        ('webhook', 'Webhook'),
-        ('api', 'External API'),
-    ], string='Source System', default='odoo')
-    
-    sync_direction = fields.Selection([
-        ('import', 'Import (Cloudbeds → Odoo)'),
-        ('export', 'Export (Odoo → Cloudbeds)'),
-        ('bidirectional', 'Bidirectional'),
-    ], string='Sync Direction', default='import')
-    
-    # Computed Fields
-    is_retriable = fields.Boolean(
-        string='Is Retriable',
-        compute='_compute_is_retriable',
-        help='Whether this sync operation can be retried'
-    )
-    status_color = fields.Integer(
-        string='Status Color',
-        compute='_compute_status_color'
-    )
-    
-    @api.depends('operation_type', 'model_name', 'cloudbeds_id', 'status')
+    @api.depends('model_name', 'action', 'sync_date', 'status')
     def _compute_display_name(self):
-        for log in self:
-            parts = []
-            if log.model_name:
-                parts.append(log.model_name)
-            if log.cloudbeds_id:
-                parts.append(f"({log.cloudbeds_id})")
-            if log.operation_type:
-                parts.append(f"[{log.operation_type}]")
-            if log.status:
-                parts.append(f"- {log.status}")
+        """Compute display name for log entry."""
+        for record in self:
+            date_str = fields.Datetime.to_string(record.sync_date)[:19]
+            status_icon = {
+                'success': '✓',
+                'error': '✗',
+                'warning': '⚠',
+                'pending': '○'
+            }.get(record.status, '')
             
-            log.display_name = " ".join(parts) if parts else _("Sync Log")
+            record.display_name = f"{status_icon} {record.model_name} - {record.action} - {date_str}"
     
-    @api.depends('started_at', 'completed_at')
-    def _compute_duration(self):
-        for log in self:
-            if log.started_at and log.completed_at:
-                delta = log.completed_at - log.started_at
-                log.duration_ms = int(delta.total_seconds() * 1000)
+    @api.depends('status', 'error_message', 'warning_message', 'model_name', 'action')
+    def _compute_summary(self):
+        """Compute summary for dashboard display."""
+        for record in self:
+            if record.status == 'success':
+                record.summary = _("Successfully %s %s") % (record.action, record.model_name)
+            elif record.status == 'error':
+                record.summary = record.error_message or _("Error during %s") % record.action
+            elif record.status == 'warning':
+                record.summary = record.warning_message or _("Warning during %s") % record.action
             else:
-                log.duration_ms = 0
+                record.summary = _("Pending %s for %s") % (record.action, record.model_name)
     
-    @api.depends('status', 'retry_count', 'max_retries')
-    def _compute_is_retriable(self):
-        for log in self:
-            log.is_retriable = (
-                log.status == 'error' and 
-                log.retry_count < log.max_retries and
-                log.operation_type in ('automatic', 'webhook', 'api_call')
-            )
-    
-    @api.depends('status')
-    def _compute_status_color(self):
-        color_map = {
-            'pending': 4,    # Blue
-            'processing': 5, # Yellow
-            'success': 10,   # Green
-            'error': 1,      # Red
-            'partial': 3,    # Orange
-            'skipped': 7,    # Gray
-            'retry': 8,      # Purple
+    @api.model
+    def create_log(self, operation_type, model_name, action, config_id, **kwargs):
+        """Helper method to create a sync log entry."""
+        vals = {
+            'operation_type': operation_type,
+            'model_name': model_name,
+            'action': action,
+            'config_id': config_id,
+            'sync_date': fields.Datetime.now(),
         }
-        for log in self:
-            log.status_color = color_map.get(log.status, 0)
+        vals.update(kwargs)
+        
+        return self.create(vals)
     
-    def mark_as_started(self):
-        """Mark the sync operation as started."""
-        self.ensure_one()
-        self.write({
-            'status': 'processing',
-            'started_at': fields.Datetime.now()
-        })
-    
-    def mark_as_success(self, response_data=None, odoo_record_id=None):
-        """Mark the sync operation as successful."""
+    def mark_success(self, response_data=None, duration=None):
+        """Mark log entry as successful."""
         self.ensure_one()
         vals = {
             'status': 'success',
-            'completed_at': fields.Datetime.now(),
-            'error_message': False,
-            'error_code': False,
+            'duration': duration,
         }
+        
         if response_data:
-            vals['response_data'] = json.dumps(response_data) if isinstance(response_data, dict) else response_data
-        if odoo_record_id:
-            vals['odoo_record_id'] = odoo_record_id
+            if isinstance(response_data, dict):
+                vals['response_data'] = json.dumps(response_data, indent=2)
+            else:
+                vals['response_data'] = str(response_data)
         
         self.write(vals)
     
-    def mark_as_error(self, error_message, error_code=None, http_status=None, response_data=None):
-        """Mark the sync operation as failed."""
+    def mark_error(self, error_message, http_status=None, response_data=None):
+        """Mark log entry as error."""
         self.ensure_one()
         vals = {
             'status': 'error',
-            'completed_at': fields.Datetime.now(),
             'error_message': error_message,
         }
-        if error_code:
-            vals['error_code'] = error_code
+        
         if http_status:
-            vals['http_status_code'] = http_status
+            vals['http_status'] = http_status
+        
         if response_data:
-            vals['response_data'] = json.dumps(response_data) if isinstance(response_data, dict) else response_data
+            if isinstance(response_data, dict):
+                vals['response_data'] = json.dumps(response_data, indent=2)
+            else:
+                vals['response_data'] = str(response_data)
+        
+        # Calculate next retry time if retries remaining
+        if self.retry_count < self.max_retries:
+            # Exponential backoff: 1min, 2min, 4min...
+            wait_minutes = 2 ** self.retry_count
+            vals['next_retry'] = fields.Datetime.now() + timedelta(minutes=wait_minutes)
         
         self.write(vals)
     
-    def mark_as_partial(self, message, response_data=None):
-        """Mark the sync operation as partially successful."""
-        self.ensure_one()
-        vals = {
-            'status': 'partial',
-            'completed_at': fields.Datetime.now(),
-            'error_message': message,
-        }
-        if response_data:
-            vals['response_data'] = json.dumps(response_data) if isinstance(response_data, dict) else response_data
-        
-        self.write(vals)
-    
-    def mark_as_skipped(self, reason):
-        """Mark the sync operation as skipped."""
+    def mark_warning(self, warning_message):
+        """Mark log entry with warning."""
         self.ensure_one()
         self.write({
-            'status': 'skipped',
-            'completed_at': fields.Datetime.now(),
-            'error_message': reason,
+            'status': 'warning',
+            'warning_message': warning_message,
         })
     
-    def schedule_retry(self, delay_minutes=None):
-        """Schedule a retry for this sync operation."""
+    def can_retry(self):
+        """Check if this operation can be retried."""
         self.ensure_one()
-        if not self.is_retriable:
+        return (
+            self.status == 'error' and
+            self.retry_count < self.max_retries and
+            self.next_retry and
+            fields.Datetime.now() >= self.next_retry
+        )
+    
+    def retry_operation(self):
+        """Retry the failed operation."""
+        self.ensure_one()
+        
+        if not self.can_retry():
             return False
         
-        if delay_minutes is None:
-            # Exponential backoff: 1, 2, 4, 8, 16 minutes
-            delay_minutes = 2 ** self.retry_count
+        # Increment retry count
+        self.retry_count += 1
         
-        next_retry = datetime.now() + timedelta(minutes=delay_minutes)
-        
-        self.write({
-            'status': 'retry',
-            'retry_count': self.retry_count + 1,
-            'next_retry_at': next_retry,
-        })
-        return True
-    
-    def retry_sync(self):
-        """Retry the sync operation."""
-        self.ensure_one()
-        if not self.is_retriable:
-            raise ValidationError(_("This sync operation cannot be retried"))
-        
-        # Reset status and timestamps
-        self.write({
+        # Create new log entry for retry
+        retry_log = self.copy({
+            'operation_type': self.operation_type,
             'status': 'pending',
-            'started_at': False,
-            'completed_at': False,
-            'next_retry_at': False,
+            'retry_count': self.retry_count,
+            'error_message': False,
+            'response_data': False,
+            'sync_date': fields.Datetime.now(),
         })
         
-        # Trigger the appropriate sync based on operation type
-        if self.operation_type == 'webhook' and self.webhook_id:
-            # Re-process webhook event
-            if self.event_data:
-                event_data = json.loads(self.event_data)
-                return self.webhook_id.process_webhook_event(event_data)
-        else:
-            # Trigger general sync for this model/record
-            sync_manager = self.env['cloudconnect.sync.manager']
-            return sync_manager.sync_record(
-                self.model_name,
-                self.cloudbeds_id,
-                self.property_id.id
-            )
-        
-        return False
-    
-    def get_related_record(self):
-        """Get the related Odoo record if it exists."""
-        self.ensure_one()
-        if not self.model_name or not self.odoo_record_id:
-            return False
-        
-        try:
-            Model = self.env[self.model_name]
-            return Model.browse(self.odoo_record_id).exists()
-        except Exception:
-            return False
-    
-    def action_view_related_record(self):
-        """Action to view the related Odoo record."""
-        self.ensure_one()
-        record = self.get_related_record()
-        if not record:
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Record Not Found"),
-                    'message': _("The related record could not be found"),
-                    'type': 'warning',
-                }
-            }
-        
-        return {
-            'name': _('Related Record'),
-            'type': 'ir.actions.act_window',
-            'res_model': self.model_name,
-            'res_id': record.id,
-            'view_mode': 'form',
-            'target': 'current',
-        }
-    
-    def action_retry_sync(self):
-        """Action to retry the sync operation."""
-        self.ensure_one()
-        if self.retry_sync():
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Retry Started"),
-                    'message': _("Sync retry has been initiated"),
-                    'type': 'success',
-                }
-            }
-        else:
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _("Retry Failed"),
-                    'message': _("Unable to retry this sync operation"),
-                    'type': 'danger',
-                }
-            }
-    
-    def action_view_request_details(self):
-        """Action to view detailed request/response data."""
-        self.ensure_one()
-        return {
-            'name': _('Sync Details'),
-            'type': 'ir.actions.act_window',
-            'res_model': 'cloudconnect.sync_log',
-            'res_id': self.id,
-            'view_mode': 'form',
-            'views': [(False, 'form')],
-            'target': 'new',
-            'context': {'show_details': True},
-        }
+        # Trigger the retry through sync manager
+        sync_manager = self.env['cloudconnect.sync.manager']
+        return sync_manager.retry_operation(retry_log)
     
     @api.model
-    def cleanup_old_logs(self, days=30):
-        """Cleanup old sync logs to prevent database bloat."""
-        cutoff_date = datetime.now() - timedelta(days=days)
+    def _cron_cleanup_old_logs(self):
+        """Cron job to clean up old log entries."""
+        # Get retention period from config
+        ICP = self.env['ir.config_parameter'].sudo()
+        retention_days = int(ICP.get_param('cloudconnect.log_retention_days', '30'))
+        
+        # Calculate cutoff date
+        cutoff_date = fields.Datetime.now() - timedelta(days=retention_days)
+        
+        # Find old logs
         old_logs = self.search([
             ('sync_date', '<', cutoff_date),
-            ('status', 'in', ['success', 'skipped'])
+            ('status', 'in', ['success', 'error']),  # Keep pending logs
         ])
         
-        count = len(old_logs)
-        old_logs.unlink()
-        _logger.info(f"Cleaned up {count} old sync logs older than {days} days")
-        return count
+        # Log deletion
+        if old_logs:
+            _logger.info(f"Deleting {len(old_logs)} old sync logs")
+            old_logs.unlink()
     
     @api.model
-    def get_sync_statistics(self, property_id=None, days=7):
-        """Get sync statistics for dashboard."""
-        domain = [('sync_date', '>=', datetime.now() - timedelta(days=days))]
-        if property_id:
-            domain.append(('property_id', '=', property_id))
+    def _cron_retry_failed_operations(self):
+        """Cron job to retry failed operations."""
+        # Find operations ready for retry
+        failed_logs = self.search([
+            ('status', '=', 'error'),
+            ('retry_count', '<', 3),
+            ('next_retry', '<=', fields.Datetime.now()),
+        ])
         
-        logs = self.search(domain)
+        for log in failed_logs:
+            try:
+                log.retry_operation()
+            except Exception as e:
+                _logger.error(f"Error retrying operation {log.id}: {str(e)}")
+    
+    def action_view_details(self):
+        """Action to view detailed log information."""
+        self.ensure_one()
+        
+        # Format JSON data for display
+        request_formatted = False
+        response_formatted = False
+        
+        if self.request_data:
+            try:
+                request_formatted = json.dumps(
+                    json.loads(self.request_data),
+                    indent=2
+                )
+            except:
+                request_formatted = self.request_data
+        
+        if self.response_data:
+            try:
+                response_formatted = json.dumps(
+                    json.loads(self.response_data),
+                    indent=2
+                )
+            except:
+                response_formatted = self.response_data
+        
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('Sync Log Details'),
+            'res_model': 'cloudconnect.sync.log',
+            'res_id': self.id,
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'form_view_initial_mode': 'readonly',
+                'request_formatted': request_formatted,
+                'response_formatted': response_formatted,
+            }
+        }
+    
+    @api.model
+    def get_dashboard_stats(self, hours=24):
+        """Get statistics for dashboard display."""
+        since = fields.Datetime.now() - timedelta(hours=hours)
+        
+        logs = self.search([('sync_date', '>=', since)])
         
         stats = {
             'total': len(logs),
             'success': len(logs.filtered(lambda l: l.status == 'success')),
             'error': len(logs.filtered(lambda l: l.status == 'error')),
-            'pending': len(logs.filtered(lambda l: l.status in ['pending', 'processing'])),
-            'partial': len(logs.filtered(lambda l: l.status == 'partial')),
-            'avg_duration': 0,
+            'warning': len(logs.filtered(lambda l: l.status == 'warning')),
+            'pending': len(logs.filtered(lambda l: l.status == 'pending')),
             'by_model': {},
-            'by_operation': {},
             'recent_errors': [],
         }
         
-        # Calculate success rate
-        stats['success_rate'] = (stats['success'] / stats['total'] * 100) if stats['total'] > 0 else 0
+        # Count by model
+        for log in logs:
+            if log.model_name not in stats['by_model']:
+                stats['by_model'][log.model_name] = {
+                    'total': 0,
+                    'success': 0,
+                    'error': 0,
+                }
+            
+            stats['by_model'][log.model_name]['total'] += 1
+            if log.status == 'success':
+                stats['by_model'][log.model_name]['success'] += 1
+            elif log.status == 'error':
+                stats['by_model'][log.model_name]['error'] += 1
         
-        # Calculate average duration
-        completed_logs = logs.filtered(lambda l: l.duration_ms > 0)
-        if completed_logs:
-            stats['avg_duration'] = sum(completed_logs.mapped('duration_ms')) / len(completed_logs)
-        
-        # Group by model
-        for model in logs.mapped('model_name'):
-            model_logs = logs.filtered(lambda l: l.model_name == model)
-            stats['by_model'][model] = {
-                'total': len(model_logs),
-                'success': len(model_logs.filtered(lambda l: l.status == 'success')),
-                'error': len(model_logs.filtered(lambda l: l.status == 'error')),
-            }
-        
-        # Group by operation type
-        for operation in logs.mapped('operation_type'):
-            op_logs = logs.filtered(lambda l: l.operation_type == operation)
-            stats['by_operation'][operation] = {
-                'total': len(op_logs),
-                'success': len(op_logs.filtered(lambda l: l.status == 'success')),
-                'error': len(op_logs.filtered(lambda l: l.status == 'error')),
-            }
-        
-        # Get recent errors
+        # Recent errors
         error_logs = logs.filtered(lambda l: l.status == 'error').sorted('sync_date', reverse=True)[:5]
-        stats['recent_errors'] = [{
-            'id': log.id,
-            'model': log.model_name,
-            'cloudbeds_id': log.cloudbeds_id,
-            'error': log.error_message,
-            'date': log.sync_date,
-        } for log in error_logs]
+        for log in error_logs:
+            stats['recent_errors'].append({
+                'id': log.id,
+                'model': log.model_name,
+                'action': log.action,
+                'error': log.error_message or 'Unknown error',
+                'date': log.sync_date,
+            })
         
         return stats
-    
-    @api.model
-    def process_retry_queue(self):
-        """Process scheduled retries (called by cron)."""
-        retry_logs = self.search([
-            ('status', '=', 'retry'),
-            ('next_retry_at', '<=', fields.Datetime.now()),
-            ('retry_count', '<', self._fields['max_retries'].default),
-        ])
-        
-        processed = 0
-        for log in retry_logs:
-            try:
-                if log.retry_sync():
-                    processed += 1
-            except Exception as e:
-                _logger.error(f"Failed to retry sync log {log.id}: {e}")
-                log.mark_as_error(f"Retry failed: {e}")
-        
-        _logger.info(f"Processed {processed} retry operations")
-        return processed
-    
-    @api.model
-    def create_batch_logs(self, batch_id, operations):
-        """Create multiple sync logs for batch operations."""
-        log_vals = []
-        for i, operation in enumerate(operations):
-            vals = operation.copy()
-            vals.update({
-                'batch_id': batch_id,
-                'batch_size': len(operations),
-                'batch_sequence': i + 1,
-            })
-            log_vals.append(vals)
-        
-        return self.create(log_vals)
-    
-    @api.constrains('retry_count', 'max_retries')
-    def _check_retry_limits(self):
-        for log in self:
-            if log.retry_count < 0:
-                raise ValidationError(_("Retry count cannot be negative"))
-            if log.max_retries < 0:
-                raise ValidationError(_("Max retries cannot be negative"))

@@ -1,3 +1,3 @@
 # -*- coding: utf-8 -*-
 
-from . import setup_wizard
+from . import cloudconnect_setup_wizard

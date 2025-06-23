@@ -1,0 +1,187 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- Main Menu -->
+    <menuitem id="menu_cloudconnect_root"
+              name="CloudConnect"
+              sequence="50"
+              groups="cloudconnect_core.group_cloudconnect_user"
+              web_icon="cloudconnect_core,static/description/icon.png"/>
+    
+    <!-- Dashboard Menu -->
+    <menuitem id="menu_cloudconnect_dashboard"
+              name="Dashboard"
+              parent="menu_cloudconnect_root"
+              action="action_cloudconnect_dashboard"
+              sequence="10"/>
+    
+    <!-- Operations Menu -->
+    <menuitem id="menu_cloudconnect_operations"
+              name="Operations"
+              parent="menu_cloudconnect_root"
+              sequence="20"/>
+    
+    <menuitem id="menu_cloudconnect_properties"
+              name="Properties"
+              parent="menu_cloudconnect_operations"
+              action="action_cloudconnect_property"
+              sequence="10"/>
+    
+    <menuitem id="menu_cloudconnect_sync_now"
+              name="Sync All Properties"
+              parent="menu_cloudconnect_operations"
+              action="action_sync_all_properties"
+              sequence="20"
+              groups="cloudconnect_core.group_cloudconnect_manager"/>
+    
+    <!-- Monitoring Menu -->
+    <menuitem id="menu_cloudconnect_monitoring"
+              name="Monitoring"
+              parent="menu_cloudconnect_root"
+              sequence="30"/>
+    
+    <menuitem id="menu_cloudconnect_sync_logs"
+              name="Sync Logs"
+              parent="menu_cloudconnect_monitoring"
+              action="action_cloudconnect_sync_log"
+              sequence="10"/>
+    
+    <menuitem id="menu_cloudconnect_sync_errors"
+              name="Sync Errors"
+              parent="menu_cloudconnect_monitoring"
+              action="action_cloudconnect_sync_errors"
+              sequence="20"/>
+    
+    <menuitem id="menu_cloudconnect_webhooks"
+              name="Webhooks"
+              parent="menu_cloudconnect_monitoring"
+              action="action_cloudconnect_webhook"
+              sequence="30"/>
+    
+    <!-- Configuration Menu -->
+    <menuitem id="menu_cloudconnect_configuration"
+              name="Configuration"
+              parent="menu_cloudconnect_root"
+              sequence="99"
+              groups="cloudconnect_core.group_cloudconnect_manager"/>
+    
+    <menuitem id="menu_cloudconnect_config"
+              name="API Configurations"
+              parent="menu_cloudconnect_configuration"
+              action="action_cloudconnect_config"
+              sequence="10"/>
+    
+    <menuitem id="menu_cloudconnect_setup_wizard"
+              name="Setup Wizard"
+              parent="menu_cloudconnect_configuration"
+              action="action_cloudconnect_setup_wizard"
+              sequence="20"/>
+    
+    <!-- Server Actions -->
+    
+    <!-- Sync All Properties Action -->
+    <record id="action_sync_all_properties" model="ir.actions.server">
+        <field name="name">Sync All Properties</field>
+        <field name="model_id" ref="model_cloudconnect_property"/>
+        <field name="state">code</field>
+        <field name="code">
+properties = model.search([('sync_enabled', '=', True)])
+if properties:
+    for prop in properties:
+        prop.action_sync_now()
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': _('Sync Started'),
+            'message': _('%d properties queued for synchronization') % len(properties),
+            'type': 'info',
+            'sticky': False,
+        }
+    }
+else:
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': _('No Properties'),
+            'message': _('No properties are enabled for synchronization'),
+            'type': 'warning',
+            'sticky': False,
+        }
+    }
+        </field>
+    </record>
+    
+    <!-- Quick Setup Action for Empty State -->
+    <record id="action_quick_setup" model="ir.actions.act_window">
+        <field name="name">Quick Setup</field>
+        <field name="res_model">cloudconnect.setup.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="binding_model_id" ref="model_cloudconnect_config"/>
+        <field name="binding_view_types">list</field>
+    </record>
+    
+    <!-- Mass Actions for Properties -->
+    <record id="action_mass_sync_properties" model="ir.actions.server">
+        <field name="name">Sync Selected Properties</field>
+        <field name="model_id" ref="model_cloudconnect_property"/>
+        <field name="binding_model_id" ref="model_cloudconnect_property"/>
+        <field name="state">code</field>
+        <field name="code">
+if records:
+    synced = 0
+    for record in records:
+        if record.sync_enabled:
+            record.action_sync_now()
+            synced += 1
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': _('Sync Started'),
+            'message': _('%d properties queued for synchronization') % synced,
+            'type': 'info',
+            'sticky': False,
+        }
+    }
+        </field>
+    </record>
+    
+    <!-- Mass Actions for Webhooks -->
+    <record id="action_mass_register_webhooks" model="ir.actions.server">
+        <field name="name">Register Selected Webhooks</field>
+        <field name="model_id" ref="model_cloudconnect_webhook"/>
+        <field name="binding_model_id" ref="model_cloudconnect_webhook"/>
+        <field name="state">code</field>
+        <field name="code">
+if records:
+    registered = 0
+    failed = 0
+    for record in records:
+        if not record.cloudbeds_webhook_id and record.active:
+            try:
+                record.register_with_cloudbeds()
+                registered += 1
+            except Exception as e:
+                failed += 1
+    
+    message = _('%d webhooks registered successfully') % registered
+    if failed:
+        message += _(', %d failed') % failed
+    
+    action = {
+        'type': 'ir.actions.client',
+        'tag': 'display_notification',
+        'params': {
+            'title': _('Registration Complete'),
+            'message': message,
+            'type': 'success' if not failed else 'warning',
+            'sticky': False,
+        }
+    }
+        </field>
+    </record>
+    
+</odoo>

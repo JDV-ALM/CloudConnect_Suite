@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- Setup Wizard Form View -->
+    <record id="view_cloudconnect_setup_wizard_form" model="ir.ui.view">
+        <field name="name">cloudconnect.setup.wizard.form</field>
+        <field name="model">cloudconnect.setup.wizard</field>
+        <field name="arch" type="xml">
+            <form string="CloudConnect Setup">
+                <header>
+                    <field name="current_step" widget="statusbar" 
+                           statusbar_visible="credentials,authenticate,properties,webhooks,complete"/>
+                </header>
+                <sheet>
+                    <!-- Step 1: OAuth Credentials -->
+                    <group attrs="{'invisible': [('current_step', '!=', 'credentials')]}">
+                        <h2>Step 1: OAuth Credentials</h2>
+                        <p class="text-muted">
+                            Enter your Cloudbeds OAuth credentials. You can obtain these from your Cloudbeds account under API settings.
+                        </p>
+                        <group>
+                            <group>
+                                <field name="config_id" invisible="1"/>
+                                <field name="config_name" attrs="{'readonly': [('config_id', '!=', False)]}"/>
+                                <field name="client_id" required="1" 
+                                       placeholder="e.g., app_VisTh9b2YzfjiJJ4Z"/>
+                                <field name="client_secret" required="1" password="True"
+                                       placeholder="Your client secret"/>
+                            </group>
+                        </group>
+                    </group>
+                    
+                    <!-- Step 2: Authentication -->
+                    <group attrs="{'invisible': [('current_step', '!=', 'authenticate')]}">
+                        <h2>Step 2: Authentication</h2>
+                        <div class="alert alert-info" role="alert">
+                            <h4 class="alert-heading">Authorization Required</h4>
+                            <ol>
+                                <li>Click the "Authorize" button below to open Cloudbeds authorization page</li>
+                                <li>Log in to your Cloudbeds account and approve the connection</li>
+                                <li>Copy the authorization code shown after approval</li>
+                                <li>Paste the code in the field below</li>
+                            </ol>
+                        </div>
+                        <group>
+                            <group>
+                                <button name="action_open_auth_url" type="object" 
+                                        string="Authorize with Cloudbeds" 
+                                        class="btn-primary"
+                                        icon="fa-external-link"/>
+                                <field name="auth_url" invisible="1"/>
+                                <field name="auth_code" 
+                                       placeholder="Paste your authorization code here"
+                                       attrs="{'required': [('current_step', '=', 'authenticate')]}"/>
+                                <field name="access_token_received" invisible="1"/>
+                            </group>
+                        </group>
+                    </group>
+                    
+                    <!-- Step 3: Select Properties -->
+                    <group attrs="{'invisible': [('current_step', '!=', 'properties')]}">
+                        <h2>Step 3: Select Properties</h2>
+                        <p class="text-muted">
+                            Select which properties you want to synchronize with Odoo.
+                        </p>
+                        <group>
+                            <field name="available_properties" readonly="1" 
+                                   attrs="{'invisible': [('available_properties', '=', False)]}"/>
+                            <field name="property_ids" widget="many2many_checkboxes"
+                                   attrs="{'required': [('current_step', '=', 'properties')]}">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="cloudbeds_id"/>
+                                    <field name="city"/>
+                                </tree>
+                            </field>
+                        </group>
+                    </group>
+                    
+                    <!-- Step 4: Configure Webhooks -->
+                    <group attrs="{'invisible': [('current_step', '!=', 'webhooks')]}">
+                        <h2>Step 4: Configure Webhooks</h2>
+                        <p class="text-muted">
+                            Select which types of events you want to receive real-time updates for.
+                        </p>
+                        <group>
+                            <group>
+                                <field name="setup_reservation_webhooks"/>
+                                <field name="setup_guest_webhooks"/>
+                                <field name="setup_payment_webhooks"/>
+                                <field name="setup_housekeeping_webhooks"/>
+                            </group>
+                            <group>
+                                <div class="text-muted">
+                                    <p><strong>Reservation Events:</strong> New bookings, cancellations, modifications</p>
+                                    <p><strong>Guest Events:</strong> Guest profile updates, check-ins/outs</p>
+                                    <p><strong>Payment Events:</strong> New payments and transactions</p>
+                                    <p><strong>Housekeeping Events:</strong> Room status changes</p>
+                                </div>
+                            </group>
+                        </group>
+                    </group>
+                    
+                    <!-- Step 5: Complete -->
+                    <group attrs="{'invisible': [('current_step', '!=', 'complete')]}">
+                        <h2>Setup Complete!</h2>
+                        <div class="alert alert-success" role="alert">
+                            <h4 class="alert-heading">Congratulations!</h4>
+                            <p>CloudConnect has been successfully configured. You can now:</p>
+                            <ul>
+                                <li>Start synchronizing data from Cloudbeds</li>
+                                <li>Receive real-time updates via webhooks</li>
+                                <li>Manage your properties and reservations</li>
+                            </ul>
+                        </div>
+                        <group>
+                            <field name="setup_log" readonly="1" 
+                                   attrs="{'invisible': [('setup_log', '=', False)]}"/>
+                        </group>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_previous" type="object" string="Previous" 
+                            class="btn-secondary"
+                            attrs="{'invisible': ['|', ('current_step', '=', 'credentials'), ('current_step', '=', 'complete')]}"/>
+                    <button name="action_next" type="object" string="Next" 
+                            class="btn-primary"
+                            attrs="{'invisible': [('current_step', '=', 'complete')]}"/>
+                    <button name="action_complete" type="object" string="Finish" 
+                            class="btn-success"
+                            attrs="{'invisible': [('current_step', '!=', 'complete')]}"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+    
+    <!-- Action to open wizard -->
+    <record id="action_cloudconnect_setup_wizard" model="ir.actions.act_window">
+        <field name="name">CloudConnect Setup</field>
+        <field name="res_model">cloudconnect.setup.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="view_id" ref="view_cloudconnect_setup_wizard_form"/>
+    </record>
+    
+    <!-- OAuth Callback Templates -->
+    <template id="oauth_success" name="OAuth Success">
+        <t t-call="web.layout">
+            <t t-set="title">CloudConnect OAuth Success</t>
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">
+                                <h4 class="mb-0">Authorization Successful!</h4>
+                            </div>
+                            <div class="card-body">
+                                <p>Please copy the authorization code below and paste it in the CloudConnect setup wizard:</p>
+                                <div class="form-group">
+                                    <label for="auth_code">Authorization Code:</label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" id="auth_code" 
+                                               t-att-value="code" readonly="readonly"/>
+                                        <div class="input-group-append">
+                                            <button class="btn btn-primary" type="button" 
+                                                    onclick="navigator.clipboard.writeText(document.getElementById('auth_code').value); this.textContent='Copied!';">
+                                                Copy
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="text-muted">
+                                    You can close this window and return to the setup wizard.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+    
+    <template id="oauth_error" name="OAuth Error">
+        <t t-call="web.layout">
+            <t t-set="title">CloudConnect OAuth Error</t>
+            <div class="container mt-5">
+                <div class="row justify-content-center">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-danger text-white">
+                                <h4 class="mb-0">Authorization Failed</h4>
+                            </div>
+                            <div class="card-body">
+                                <p>An error occurred during authorization:</p>
+                                <div class="alert alert-danger">
+                                    <strong>Error:</strong> <t t-esc="error"/><br/>
+                                    <t t-if="error_description">
+                                        <strong>Description:</strong> <t t-esc="error_description"/>
+                                    </t>
+                                </div>
+                                <p>Please close this window and try again in the setup wizard.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+    
+</odoo>

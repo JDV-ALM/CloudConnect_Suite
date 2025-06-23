@@ -1,232 +1,124 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     
-    <!-- CloudConnect Dashboard Action -->
-    <record id="action_cloudconnect_dashboard" model="ir.actions.client">
-        <field name="name">CloudConnect Dashboard</field>
-        <field name="tag">cloudconnect_dashboard</field>
-    </record>
-    
-    <!-- CloudConnect Configuration Dashboard -->
-    <record id="view_cloudconnect_config_dashboard" model="ir.ui.view">
-        <field name="name">cloudconnect.config.dashboard</field>
+    <!-- Dashboard View -->
+    <record id="view_cloudconnect_dashboard" model="ir.ui.view">
+        <field name="name">cloudconnect.dashboard</field>
         <field name="model">cloudconnect.config</field>
+        <field name="mode">primary</field>
         <field name="arch" type="xml">
             <form string="CloudConnect Dashboard" create="false" edit="false">
                 <sheet>
-                    <div class="o_dashboard">
-                        <!-- Header Section -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <h1 class="text-center">
-                                    <i class="fa fa-cloud"/> CloudConnect Dashboard
-                                </h1>
-                                <p class="text-center text-muted">
-                                    Real-time monitoring of your Cloudbeds integration
-                                </p>
-                            </div>
-                        </div>
-                        
-                        <!-- Connection Status Cards -->
-                        <div class="row mb-4">
-                            <div class="col-md-3">
-                                <div class="card border-primary">
-                                    <div class="card-body text-center">
-                                        <i class="fa fa-plug fa-2x text-primary mb-2"/>
-                                        <h5 class="card-title">API Connection</h5>
-                                        <h3 class="text-primary">
-                                            <field name="connection_status" widget="badge"/>
-                                        </h3>
-                                        <small class="text-muted">
-                                            Last test: <field name="last_connection_test"/>
-                                        </small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card border-success">
-                                    <div class="card-body text-center">
-                                        <i class="fa fa-building fa-2x text-success mb-2"/>
-                                        <h5 class="card-title">Properties</h5>
-                                        <h3 class="text-success">
-                                            <field name="property_count"/>
-                                        </h3>
-                                        <small class="text-muted">Active properties</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card border-info">
-                                    <div class="card-body text-center">
-                                        <i class="fa fa-bell fa-2x text-info mb-2"/>
-                                        <h5 class="card-title">Webhooks</h5>
-                                        <h3 class="text-info">
-                                            <field name="webhook_count" invisible="1"/>
-                                            <span class="webhook_count_display">0</span>
-                                        </h3>
-                                        <small class="text-muted">Active webhooks</small>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="card border-warning">
-                                    <div class="card-body text-center">
-                                        <i class="fa fa-sync fa-2x text-warning mb-2"/>
-                                        <h5 class="card-title">Sync Status</h5>
-                                        <h3 class="text-warning">
-                                            <span t-if="record.sync_enabled.raw_value">
-                                                <i class="fa fa-check-circle text-success"/>
-                                            </span>
-                                            <span t-else="">
-                                                <i class="fa fa-pause-circle text-danger"/>
-                                            </span>
-                                        </h3>
-                                        <small class="text-muted">
-                                            <span t-if="record.sync_enabled.raw_value">Enabled</span>
-                                            <span t-else="">Disabled</span>
-                                        </small>
-                                    </div>
+                    <div class="oe_title">
+                        <h1>CloudConnect Dashboard</h1>
+                    </div>
+                    
+                    <!-- Connection Status Cards -->
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <h2 class="text-success" t-if="connection_status == 'connected'">
+                                        <i class="fa fa-check-circle"/>
+                                    </h2>
+                                    <h2 class="text-danger" t-elif="connection_status == 'error'">
+                                        <i class="fa fa-times-circle"/>
+                                    </h2>
+                                    <h2 class="text-muted" t-else="">
+                                        <i class="fa fa-circle-o"/>
+                                    </h2>
+                                    <h5>Connection Status</h5>
+                                    <p class="text-muted mb-0">
+                                        <field name="connection_status" widget="badge"/>
+                                    </p>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Quick Actions -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header">
-                                        <h5><i class="fa fa-bolt"/> Quick Actions</h5>
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="row">
-                                            <div class="col-md-3">
-                                                <button name="action_test_connection" type="object" 
-                                                        class="btn btn-primary btn-block">
-                                                    <i class="fa fa-plug"/> Test Connection
-                                                </button>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <button name="%(action_cloudconnect_setup_wizard)d" type="action" 
-                                                        class="btn btn-info btn-block">
-                                                    <i class="fa fa-magic"/> Setup Wizard
-                                                </button>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <button name="%(action_cloudconnect_property)d" type="action" 
-                                                        class="btn btn-success btn-block">
-                                                    <i class="fa fa-building"/> Manage Properties
-                                                </button>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <button name="%(action_cloudconnect_sync_log)d" type="action" 
-                                                        class="btn btn-warning btn-block"
-                                                        context="{'search_default_error': 1}">
-                                                    <i class="fa fa-list-alt"/> View Logs
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <h2 class="text-primary">
+                                        <i class="fa fa-building"/>
+                                    </h2>
+                                    <h5>Active Properties</h5>
+                                    <p class="text-muted mb-0">
+                                        <field name="property_ids" widget="statinfo" string="Properties" nolabel="1"/>
+                                    </p>
                                 </div>
                             </div>
                         </div>
                         
-                        <!-- Properties Overview -->
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <div class="card">
-                                    <div class="card-header d-flex justify-content-between">
-                                        <h5><i class="fa fa-building"/> Properties Overview</h5>
-                                        <button name="%(action_cloudconnect_property)d" type="action" 
-                                                class="btn btn-sm btn-outline-primary">
-                                            View All
-                                        </button>
-                                    </div>
-                                    <div class="card-body">
-                                        <field name="property_ids" mode="kanban" options="{'no_create': True}">
-                                            <kanban class="o_kanban_small_column">
-                                                <field name="name"/>
-                                                <field name="cloudbeds_id"/>
-                                                <field name="city"/>
-                                                <field name="last_sync_status"/>
-                                                <field name="sync_enabled"/>
-                                                <field name="sync_error_count"/>
-                                                <templates>
-                                                    <t t-name="kanban-box">
-                                                        <div class="oe_kanban_card oe_kanban_global_click">
-                                                            <div class="oe_kanban_content">
-                                                                <div class="row">
-                                                                    <div class="col-8">
-                                                                        <strong><field name="name"/></strong>
-                                                                        <br/>
-                                                                        <small class="text-muted">
-                                                                            <field name="city"/>
-                                                                        </small>
-                                                                    </div>
-                                                                    <div class="col-4 text-right">
-                                                                        <span t-attf-class="badge #{record.last_sync_status.raw_value === 'success' ? 'badge-success' : record.last_sync_status.raw_value === 'error' ? 'badge-danger' : 'badge-warning'}">
-                                                                            <field name="last_sync_status"/>
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                                <div class="row mt-1" t-if="record.sync_error_count.raw_value > 0">
-                                                                    <div class="col-12">
-                                                                        <small class="text-danger">
-                                                                            <i class="fa fa-exclamation-triangle"/> 
-                                                                            <field name="sync_error_count"/> errors
-                                                                        </small>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </t>
-                                                </templates>
-                                            </kanban>
-                                        </field>
-                                    </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <h2 class="text-info">
+                                        <i class="fa fa-plug"/>
+                                    </h2>
+                                    <h5>Active Webhooks</h5>
+                                    <p class="text-muted mb-0">
+                                        <field name="webhook_ids" widget="statinfo" string="Webhooks" nolabel="1"/>
+                                    </p>
                                 </div>
                             </div>
                         </div>
-                        
-                        <!-- Recent Activity -->
+                    </div>
+                    
+                    <!-- Quick Actions -->
+                    <div class="mt-4">
+                        <h3>Quick Actions</h3>
                         <div class="row">
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header d-flex justify-content-between">
-                                        <h5><i class="fa fa-clock-o"/> Recent Sync Activity</h5>
-                                        <button name="%(action_cloudconnect_sync_log)d" type="action" 
-                                                class="btn btn-sm btn-outline-primary">
-                                            View All
-                                        </button>
-                                    </div>
-                                    <div class="card-body">
-                                        <div class="recent-activity-placeholder">
-                                            <p class="text-center text-muted">
-                                                <i class="fa fa-spinner fa-spin"/> Loading recent activity...
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
+                            <div class="col-md-3">
+                                <button name="action_test_connection" type="object" 
+                                        class="btn btn-primary btn-block"
+                                        icon="fa-refresh">
+                                    Test Connection
+                                </button>
                             </div>
-                            <div class="col-md-6">
-                                <div class="card">
-                                    <div class="card-header d-flex justify-content-between">
-                                        <h5><i class="fa fa-bell"/> Webhook Status</h5>
-                                        <button name="%(action_cloudconnect_webhook)d" type="action" 
-                                                class="btn btn-sm btn-outline-primary">
-                                            View All
-                                        </button>
-                                    </div>
-                                    <div class="card-body">
-                                        <field name="webhook_ids" mode="tree" options="{'no_create': True}">
-                                            <tree limit="5">
-                                                <field name="property_id"/>
-                                                <field name="event_type"/>
-                                                <field name="status" widget="badge"/>
-                                                <field name="last_received"/>
-                                            </tree>
-                                        </field>
-                                    </div>
-                                </div>
+                            <div class="col-md-3">
+                                <button name="%(action_cloudconnect_property)d" type="action" 
+                                        class="btn btn-secondary btn-block"
+                                        icon="fa-building">
+                                    Manage Properties
+                                </button>
+                            </div>
+                            <div class="col-md-3">
+                                <button name="%(action_cloudconnect_webhook)d" type="action" 
+                                        class="btn btn-secondary btn-block"
+                                        icon="fa-plug">
+                                    Configure Webhooks
+                                </button>
+                            </div>
+                            <div class="col-md-3">
+                                <button name="%(action_cloudconnect_sync_log)d" type="action" 
+                                        class="btn btn-secondary btn-block"
+                                        icon="fa-history">
+                                    View Logs
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent Activity -->
+                    <div class="mt-5">
+                        <h3>Recent Activity</h3>
+                        <div id="recent_sync_logs">
+                            <!-- This would be populated by JavaScript -->
+                        </div>
+                    </div>
+                    
+                    <!-- Statistics -->
+                    <div class="row mt-5">
+                        <div class="col-md-6">
+                            <h4>Sync Statistics (Last 24 Hours)</h4>
+                            <div id="sync_stats_chart">
+                                <!-- Chart would be rendered here -->
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h4>Webhook Events (Last 24 Hours)</h4>
+                            <div id="webhook_stats_chart">
+                                <!-- Chart would be rendered here -->
                             </div>
                         </div>
                     </div>
@@ -235,54 +127,122 @@
         </field>
     </record>
     
-    <!-- Alternative Dashboard Tree View for Multiple Configurations -->
-    <record id="view_cloudconnect_dashboard_tree" model="ir.ui.view">
-        <field name="name">cloudconnect.dashboard.tree</field>
-        <field name="model">cloudconnect.config</field>
-        <field name="arch" type="xml">
-            <tree string="CloudConnect Dashboard" create="false" edit="false" 
-                  decoration-success="connection_status=='connected'" 
-                  decoration-danger="connection_status=='error'">
-                <field name="name"/>
-                <field name="connection_status" widget="badge"/>
-                <field name="property_count"/>
-                <field name="sync_enabled" widget="boolean_toggle"/>
-                <field name="last_connection_test"/>
-                <!-- Quick Action Buttons -->
-                <button name="action_test_connection" type="object" 
-                        string="Test" icon="fa-plug" class="btn-sm"/>
-                <button name="%(action_cloudconnect_property)d" type="action" 
-                        string="Properties" icon="fa-building" class="btn-sm"
-                        context="{'search_default_config_id': active_id}"/>
-                <button name="%(action_cloudconnect_sync_log)d" type="action" 
-                        string="Logs" icon="fa-list" class="btn-sm"
-                        context="{'search_default_config_id': active_id}"/>
-            </tree>
-        </field>
-    </record>
-    
-    <!-- Dashboard Action for Multiple Configurations -->
-    <record id="action_cloudconnect_dashboard_multi" model="ir.actions.act_window">
-        <field name="name">CloudConnect Dashboard</field>
+    <!-- Dashboard Action -->
+    <record id="action_cloudconnect_dashboard" model="ir.actions.act_window">
+        <field name="name">Dashboard</field>
         <field name="res_model">cloudconnect.config</field>
-        <field name="view_mode">tree</field>
-        <field name="view_id" ref="view_cloudconnect_dashboard_tree"/>
-        <field name="context">{'search_default_active': 1}</field>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                Welcome to CloudConnect!
-            </p>
-            <p>
-                Start by configuring your Cloudbeds API credentials using the Setup Wizard.
-            </p>
-        </field>
+        <field name="view_mode">form</field>
+        <field name="view_id" ref="view_cloudconnect_dashboard"/>
+        <field name="target">inline</field>
+        <field name="context">{
+            'create': False,
+            'edit': False,
+            'delete': False,
+        }</field>
     </record>
     
-    <!-- Documentation Action -->
-    <record id="action_cloudconnect_documentation" model="ir.actions.act_url">
-        <field name="name">CloudConnect Documentation</field>
-        <field name="url">https://docs.cloudconnect.com</field>
-        <field name="target">new</field>
+    <!-- Client Action for Dynamic Dashboard -->
+    <record id="cloudconnect_dashboard_client_action" model="ir.actions.client">
+        <field name="name">CloudConnect Dashboard</field>
+        <field name="tag">cloudconnect_dashboard</field>
+        <field name="target">main</field>
     </record>
-
+    
+    <!-- Dashboard Template -->
+    <template id="cloudconnect_dashboard_template" name="CloudConnect Dashboard">
+        <div class="o_cloudconnect_dashboard">
+            <div class="container-fluid">
+                <h1>CloudConnect Dashboard</h1>
+                
+                <!-- Connection Status -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="alert alert-info" role="alert">
+                            <h4 class="alert-heading">Welcome to CloudConnect!</h4>
+                            <p>Manage your Cloudbeds integration from this central dashboard.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stats Cards -->
+                <div class="row">
+                    <div class="col-md-3 col-sm-6">
+                        <div class="info-box">
+                            <span class="info-box-icon bg-aqua">
+                                <i class="fa fa-cloud"/>
+                            </span>
+                            <div class="info-box-content">
+                                <span class="info-box-text">Configurations</span>
+                                <span class="info-box-number" id="config_count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 col-sm-6">
+                        <div class="info-box">
+                            <span class="info-box-icon bg-green">
+                                <i class="fa fa-building"/>
+                            </span>
+                            <div class="info-box-content">
+                                <span class="info-box-text">Properties</span>
+                                <span class="info-box-number" id="property_count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 col-sm-6">
+                        <div class="info-box">
+                            <span class="info-box-icon bg-yellow">
+                                <i class="fa fa-plug"/>
+                            </span>
+                            <div class="info-box-content">
+                                <span class="info-box-text">Active Webhooks</span>
+                                <span class="info-box-number" id="webhook_count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 col-sm-6">
+                        <div class="info-box">
+                            <span class="info-box-icon bg-red">
+                                <i class="fa fa-exclamation-triangle"/>
+                            </span>
+                            <div class="info-box-content">
+                                <span class="info-box-text">Recent Errors</span>
+                                <span class="info-box-number" id="error_count">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Charts -->
+                <div class="row mt-4">
+                    <div class="col-md-8">
+                        <div class="box">
+                            <div class="box-header">
+                                <h3 class="box-title">Sync Activity</h3>
+                            </div>
+                            <div class="box-body">
+                                <canvas id="sync_activity_chart"/>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-4">
+                        <div class="box">
+                            <div class="box-header">
+                                <h3 class="box-title">Recent Errors</h3>
+                            </div>
+                            <div class="box-body">
+                                <ul id="recent_errors_list" class="list-unstyled">
+                                    <li class="text-muted">No recent errors</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </template>
+    
 </odoo>

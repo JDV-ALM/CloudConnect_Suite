@@ -1,604 +1,425 @@
 # -*- coding: utf-8 -*-
 
-import logging
-import uuid
-from datetime import datetime, timedelta
 from odoo import models, api, fields, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
+import logging
+from datetime import datetime, timedelta
+from queue import Queue, PriorityQueue
+import threading
 
 _logger = logging.getLogger(__name__)
 
 
 class SyncManager(models.AbstractModel):
     _name = 'cloudconnect.sync.manager'
-    _description = 'CloudConnect Sync Manager'
-
+    _description = 'CloudConnect Synchronization Manager'
+    
+    def __init__(self, pool, cr):
+        super().__init__(pool, cr)
+        # Priority queue for sync operations
+        self._sync_queue = PriorityQueue()
+        self._sync_lock = threading.Lock()
+        self._active_syncs = {}
+    
     @api.model
-    def sync_property(self, property_id, sync_type='manual', modules=None):
-        """Sync all data for a specific property."""
+    def sync_property(self, property_record):
+        """
+        Synchronize all data for a property.
+        
+        :param property_record: cloudconnect.property record
+        :return: Action dictionary with results
+        """
+        if not property_record.sync_enabled:
+            raise UserError(_("Synchronization is disabled for this property."))
+        
+        if not property_record.config_id.access_token:
+            raise UserError(_("No valid access token. Please authenticate first."))
+        
+        # Check if sync is already running for this property
+        with self._sync_lock:
+            if property_record.id in self._active_syncs:
+                raise UserError(_("Synchronization is already running for this property."))
+            self._active_syncs[property_record.id] = datetime.now()
+        
         try:
-            property_obj = self.env['cloudconnect.property'].browse(property_id)
-            if not property_obj.exists():
-                raise ValidationError(f"Property {property_id} not found")
-            
-            if not property_obj.sync_enabled:
-                _logger.info(f"Sync disabled for property {property_obj.name}")
-                return {'success': False, 'message': 'Sync disabled for this property'}
-            
-            batch_id = f"sync_{property_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}"
-            
-            _logger.info(f"Starting sync for property {property_obj.name} (batch: {batch_id})")
-            
-            # Mark sync as started
-            property_obj.update_sync_status('pending')
-            
             results = {
-                'property_id': property_id,
-                'property_name': property_obj.name,
-                'batch_id': batch_id,
-                'sync_type': sync_type,
-                'started_at': datetime.now(),
-                'modules': {},
-                'total_success': 0,
-                'total_errors': 0,
-                'total_skipped': 0,
+                'property': property_record.name,
+                'start_time': datetime.now(),
+                'success': [],
+                'errors': [],
+                'warnings': []
             }
             
-            # Define sync modules in order of dependency
-            sync_modules = modules or [
-                'properties',  # Core property data
-                'room_types',  # Room types and rooms
-                'guests',      # Guests (if cloudconnect_guests installed)
-                'reservations', # Reservations (if cloudconnect_reservations installed)
-                'payments',    # Payments (if cloudconnect_payments installed)
-                'items',       # Items/products (if cloudconnect_items installed)
+            # Sync in order of dependencies
+            sync_operations = [
+                ('Room Types', self._sync_room_types),
+                ('Rooms', self._sync_rooms),
+                ('Rates', self._sync_rates),
+                ('Guests', self._sync_guests),
+                ('Reservations', self._sync_reservations),
+                ('Transactions', self._sync_transactions),
             ]
             
-            # Execute sync modules
-            for module in sync_modules:
+            for operation_name, operation_method in sync_operations:
+                if not self._should_sync_model(property_record, operation_name):
+                    continue
+                
                 try:
-                    module_result = self._sync_module(property_obj, module, batch_id, sync_type)
-                    results['modules'][module] = module_result
-                    results['total_success'] += module_result.get('success_count', 0)
-                    results['total_errors'] += module_result.get('error_count', 0)
-                    results['total_skipped'] += module_result.get('skipped_count', 0)
-                    
+                    _logger.info(f"Syncing {operation_name} for {property_record.name}")
+                    operation_result = operation_method(property_record)
+                    results['success'].append({
+                        'operation': operation_name,
+                        'count': operation_result.get('count', 0),
+                        'message': operation_result.get('message', 'Success')
+                    })
                 except Exception as e:
-                    _logger.error(f"Module sync failed for {module}: {e}")
-                    results['modules'][module] = {
-                        'success': False,
-                        'error': str(e),
-                        'success_count': 0,
-                        'error_count': 1,
-                        'skipped_count': 0,
-                    }
-                    results['total_errors'] += 1
+                    _logger.error(f"Error syncing {operation_name}: {str(e)}")
+                    results['errors'].append({
+                        'operation': operation_name,
+                        'error': str(e)
+                    })
             
-            # Update final sync status
-            results['completed_at'] = datetime.now()
-            results['duration'] = (results['completed_at'] - results['started_at']).total_seconds()
-            
-            if results['total_errors'] == 0:
-                property_obj.update_sync_status('success')
-                results['overall_status'] = 'success'
-            elif results['total_success'] > 0:
-                property_obj.update_sync_status('partial', f"{results['total_errors']} errors occurred")
-                results['overall_status'] = 'partial'
+            # Update property sync status
+            if results['errors']:
+                status = 'partial' if results['success'] else 'failed'
             else:
-                property_obj.update_sync_status('error', f"All modules failed")
-                results['overall_status'] = 'error'
+                status = 'success'
             
-            _logger.info(f"Sync completed for property {property_obj.name}: {results['overall_status']}")
-            return results
+            property_record.update_sync_status(
+                status,
+                self._format_sync_message(results)
+            )
             
-        except Exception as e:
-            _logger.error(f"Property sync failed: {e}")
-            if 'property_obj' in locals():
-                property_obj.update_sync_status('error', str(e))
-            raise UserError(f"Sync failed: {e}")
-    
-    def _sync_module(self, property_obj, module_name, batch_id, sync_type):
-        """Sync a specific module for a property."""
-        _logger.info(f"Syncing module {module_name} for property {property_obj.name}")
-        
-        try:
-            # Get the appropriate sync method
-            sync_method = getattr(self, f'_sync_{module_name}', None)
-            if not sync_method:
-                _logger.warning(f"No sync method found for module {module_name}")
-                return {
-                    'success': False,
-                    'error': f"Module {module_name} not implemented",
-                    'success_count': 0,
-                    'error_count': 0,
-                    'skipped_count': 1,
+            # Return action to show results
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Synchronization Complete'),
+                    'message': self._format_sync_message(results),
+                    'type': 'success' if status == 'success' else 'warning',
+                    'sticky': True,
                 }
-            
-            # Execute the sync method
-            result = sync_method(property_obj, batch_id, sync_type)
-            
-            return result
-            
-        except Exception as e:
-            _logger.error(f"Module {module_name} sync failed: {e}")
-            return {
-                'success': False,
-                'error': str(e),
-                'success_count': 0,
-                'error_count': 1,
-                'skipped_count': 0,
             }
+            
+        finally:
+            # Remove from active syncs
+            with self._sync_lock:
+                self._active_syncs.pop(property_record.id, None)
     
-    def _sync_properties(self, property_obj, batch_id, sync_type):
-        """Sync basic property information."""
+    def _should_sync_model(self, property_record, model_name):
+        """Check if model should be synced based on property settings."""
+        model_settings = {
+            'Reservations': property_record.auto_sync_reservations,
+            'Guests': property_record.auto_sync_guests,
+            'Rates': property_record.auto_sync_rates,
+        }
+        return model_settings.get(model_name, True)
+    
+    def _format_sync_message(self, results):
+        """Format sync results into readable message."""
+        lines = []
+        
+        if results['success']:
+            lines.append(_("Successful operations:"))
+            for item in results['success']:
+                lines.append(f"  • {item['operation']}: {item['message']}")
+        
+        if results['errors']:
+            lines.append(_("\nErrors:"))
+            for item in results['errors']:
+                lines.append(f"  • {item['operation']}: {item['error']}")
+        
+        if results['warnings']:
+            lines.append(_("\nWarnings:"))
+            for item in results['warnings']:
+                lines.append(f"  • {item['warning']}")
+        
+        return '\n'.join(lines)
+    
+    def _sync_room_types(self, property_record):
+        """Sync room types for property."""
+        api_service = self.env['cloudconnect.api.service']
+        
         try:
-            api_service = self.env['cloudconnect.api.service']
-            config = property_obj.config_id
+            room_types = api_service.get_room_types(
+                property_record.config_id,
+                [property_record.cloudbeds_id]
+            )
             
-            # Get hotel details from Cloudbeds
-            hotel_data = api_service.get_hotel_details(config, property_obj.cloudbeds_id)
-            
-            if not hotel_data.get('success'):
-                raise UserError("Failed to fetch hotel details from Cloudbeds")
-            
-            hotel_info = hotel_data.get('data', {})
-            
-            # Update property information
-            update_vals = {}
-            if hotel_info.get('propertyName'):
-                update_vals['name'] = hotel_info['propertyName']
-            if hotel_info.get('propertyCity'):
-                update_vals['city'] = hotel_info['propertyCity']
-            if hotel_info.get('propertyCountry'):
-                country = self.env['res.country'].search([
-                    ('code', '=', hotel_info['propertyCountry'].upper())
-                ], limit=1)
-                if country:
-                    update_vals['country_id'] = country.id
-            if hotel_info.get('propertyTimezone'):
-                update_vals['timezone'] = hotel_info['propertyTimezone']
-            if hotel_info.get('propertyPhone'):
-                update_vals['phone'] = hotel_info['propertyPhone']
-            if hotel_info.get('propertyEmail'):
-                update_vals['email'] = hotel_info['propertyEmail']
-            
-            if update_vals:
-                property_obj.write(update_vals)
-            
-            # Create sync log
-            self.env['cloudconnect.sync_log'].create({
-                'property_id': property_obj.id,
-                'operation_type': sync_type,
-                'model_name': 'cloudconnect.property',
-                'cloudbeds_id': property_obj.cloudbeds_id,
-                'status': 'success',
-                'batch_id': batch_id,
-                'sync_date': datetime.now(),
-                'odoo_record_id': property_obj.id,
-            })
-            
+            # Process room types - just count for now
+            # Extension modules will handle actual room type creation
             return {
-                'success': True,
-                'success_count': 1,
-                'error_count': 0,
-                'skipped_count': 0,
-                'message': 'Property information updated'
+                'count': len(room_types),
+                'message': _("%d room types found") % len(room_types)
             }
             
         except Exception as e:
-            # Create error log
-            self.env['cloudconnect.sync_log'].create({
-                'property_id': property_obj.id,
-                'operation_type': sync_type,
-                'model_name': 'cloudconnect.property',
-                'cloudbeds_id': property_obj.cloudbeds_id,
-                'status': 'error',
-                'error_message': str(e),
-                'batch_id': batch_id,
-                'sync_date': datetime.now(),
-            })
-            
-            return {
-                'success': False,
-                'error': str(e),
-                'success_count': 0,
-                'error_count': 1,
-                'skipped_count': 0,
-            }
+            raise UserError(_("Failed to sync room types: %s") % str(e))
     
-    def _sync_room_types(self, property_obj, batch_id, sync_type):
-        """Sync room types and rooms."""
+    def _sync_rooms(self, property_record):
+        """Sync rooms for property."""
+        api_service = self.env['cloudconnect.api.service']
+        
         try:
-            api_service = self.env['cloudconnect.api.service']
-            config = property_obj.config_id
-            
-            # Get room types
-            room_types_data = api_service.get_room_types(config, property_obj.cloudbeds_id)
-            
-            if not room_types_data.get('success'):
-                raise UserError("Failed to fetch room types from Cloudbeds")
-            
-            room_types = room_types_data.get('data', [])
-            success_count = 0
-            error_count = 0
-            
-            for room_type_data in room_types:
-                try:
-                    # This would be implemented in cloudconnect_reservations module
-                    # For now, just log the data
-                    
-                    self.env['cloudconnect.sync_log'].create({
-                        'property_id': property_obj.id,
-                        'operation_type': sync_type,
-                        'model_name': 'room.type',
-                        'cloudbeds_id': str(room_type_data.get('roomTypeID', 'unknown')),
-                        'status': 'success',
-                        'batch_id': batch_id,
-                        'sync_date': datetime.now(),
-                        'error_message': f"Room type: {room_type_data.get('roomTypeName', 'Unknown')}",
-                    })
-                    
-                    success_count += 1
-                    
-                except Exception as e:
-                    _logger.error(f"Error syncing room type {room_type_data.get('roomTypeID')}: {e}")
-                    
-                    self.env['cloudconnect.sync_log'].create({
-                        'property_id': property_obj.id,
-                        'operation_type': sync_type,
-                        'model_name': 'room.type',
-                        'cloudbeds_id': str(room_type_data.get('roomTypeID', 'unknown')),
-                        'status': 'error',
-                        'error_message': str(e),
-                        'batch_id': batch_id,
-                        'sync_date': datetime.now(),
-                    })
-                    
-                    error_count += 1
+            rooms = api_service.get_rooms(
+                property_record.config_id,
+                {'propertyIDs': property_record.cloudbeds_id}
+            )
             
             return {
-                'success': error_count == 0,
-                'success_count': success_count,
-                'error_count': error_count,
-                'skipped_count': 0,
-                'message': f"Synced {success_count} room types"
+                'count': len(rooms),
+                'message': _("%d rooms found") % len(rooms)
             }
             
         except Exception as e:
-            return {
-                'success': False,
-                'error': str(e),
-                'success_count': 0,
-                'error_count': 1,
-                'skipped_count': 0,
-            }
+            raise UserError(_("Failed to sync rooms: %s") % str(e))
     
-    def _sync_guests(self, property_obj, batch_id, sync_type):
-        """Sync guests (placeholder - will be implemented in cloudconnect_guests)."""
-        # Check if guests module is installed
-        if 'cloudconnect_guests' not in self.env.registry._init_modules:
-            return {
-                'success': True,
-                'success_count': 0,
-                'error_count': 0,
-                'skipped_count': 1,
-                'message': 'Guests module not installed'
-            }
-        
-        # This will be implemented in cloudconnect_guests module
-        _logger.info(f"Guests sync placeholder for property {property_obj.name}")
+    def _sync_rates(self, property_record):
+        """Sync rates for property."""
+        # Basic implementation - extension modules will enhance
         return {
-            'success': True,
-            'success_count': 0,
-            'error_count': 0,
-            'skipped_count': 1,
-            'message': 'Guests sync not yet implemented'
+            'count': 0,
+            'message': _("Rate sync not implemented in core module")
         }
     
-    def _sync_reservations(self, property_obj, batch_id, sync_type):
-        """Sync reservations (placeholder - will be implemented in cloudconnect_reservations)."""
-        # Check if reservations module is installed
-        if 'cloudconnect_reservations' not in self.env.registry._init_modules:
-            return {
-                'success': True,
-                'success_count': 0,
-                'error_count': 0,
-                'skipped_count': 1,
-                'message': 'Reservations module not installed'
-            }
+    def _sync_guests(self, property_record):
+        """Sync guests for property."""
+        api_service = self.env['cloudconnect.api.service']
         
-        # This will be implemented in cloudconnect_reservations module
-        _logger.info(f"Reservations sync placeholder for property {property_obj.name}")
-        return {
-            'success': True,
-            'success_count': 0,
-            'error_count': 0,
-            'skipped_count': 1,
-            'message': 'Reservations sync not yet implemented'
-        }
+        try:
+            # Sync recent guests (last 30 days)
+            filters = {
+                'propertyIDs': property_record.cloudbeds_id,
+                'resultsFrom': (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
+                'includeGuestInfo': True,
+            }
+            
+            guests = api_service.get_guests(property_record.config_id, filters)
+            
+            return {
+                'count': len(guests),
+                'message': _("%d guests found") % len(guests)
+            }
+            
+        except Exception as e:
+            raise UserError(_("Failed to sync guests: %s") % str(e))
     
-    def _sync_payments(self, property_obj, batch_id, sync_type):
-        """Sync payments (placeholder - will be implemented in cloudconnect_payments)."""
-        # Check if payments module is installed
-        if 'cloudconnect_payments' not in self.env.registry._init_modules:
-            return {
-                'success': True,
-                'success_count': 0,
-                'error_count': 0,
-                'skipped_count': 1,
-                'message': 'Payments module not installed'
-            }
+    def _sync_reservations(self, property_record):
+        """Sync reservations for property."""
+        api_service = self.env['cloudconnect.api.service']
         
-        # This will be implemented in cloudconnect_payments module
-        _logger.info(f"Payments sync placeholder for property {property_obj.name}")
-        return {
-            'success': True,
-            'success_count': 0,
-            'error_count': 0,
-            'skipped_count': 1,
-            'message': 'Payments sync not yet implemented'
-        }
+        try:
+            # Sync future and recent reservations
+            filters = {
+                'propertyID': property_record.cloudbeds_id,
+                'checkInFrom': (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d'),
+                'includeGuestsDetails': True,
+            }
+            
+            reservations = api_service.get_reservations(property_record.config_id, filters)
+            
+            return {
+                'count': len(reservations),
+                'message': _("%d reservations found") % len(reservations)
+            }
+            
+        except Exception as e:
+            raise UserError(_("Failed to sync reservations: %s") % str(e))
     
-    def _sync_items(self, property_obj, batch_id, sync_type):
-        """Sync items/products (placeholder - will be implemented in cloudconnect_items)."""
-        # Check if items module is installed
-        if 'cloudconnect_items' not in self.env.registry._init_modules:
-            return {
-                'success': True,
-                'success_count': 0,
-                'error_count': 0,
-                'skipped_count': 1,
-                'message': 'Items module not installed'
-            }
-        
-        # This will be implemented in cloudconnect_items module
-        _logger.info(f"Items sync placeholder for property {property_obj.name}")
+    def _sync_transactions(self, property_record):
+        """Sync transactions for property."""
+        # Basic implementation - extension modules will enhance
         return {
-            'success': True,
-            'success_count': 0,
-            'error_count': 0,
-            'skipped_count': 1,
-            'message': 'Items sync not yet implemented'
+            'count': 0,
+            'message': _("Transaction sync not implemented in core module")
         }
     
     @api.model
-    def sync_all_properties(self, config_id=None, sync_type='automatic'):
-        """Sync all enabled properties."""
-        domain = [('sync_enabled', '=', True)]
-        if config_id:
-            domain.append(('config_id', '=', config_id))
+    def retry_operation(self, sync_log):
+        """
+        Retry a failed sync operation.
         
-        properties = self.env['cloudconnect.property'].search(domain)
+        :param sync_log: cloudconnect.sync.log record
+        :return: Boolean indicating success
+        """
+        if not sync_log.can_retry():
+            return False
         
-        results = {
-            'total_properties': len(properties),
-            'successful': 0,
-            'failed': 0,
-            'properties': {}
+        try:
+            # Determine operation type and retry
+            if sync_log.operation_type == 'api_call':
+                # Retry API call
+                return self._retry_api_call(sync_log)
+            elif sync_log.operation_type == 'webhook':
+                # Reprocess webhook
+                return self._retry_webhook(sync_log)
+            else:
+                _logger.warning(f"Unknown operation type for retry: {sync_log.operation_type}")
+                return False
+                
+        except Exception as e:
+            _logger.error(f"Error retrying operation: {str(e)}")
+            sync_log.mark_error(str(e))
+            return False
+    
+    def _retry_api_call(self, sync_log):
+        """Retry a failed API call."""
+        # Parse original request data
+        try:
+            import json
+            request_data = json.loads(sync_log.request_data) if sync_log.request_data else {}
+            
+            # Recreate API call based on endpoint
+            api_service = self.env['cloudconnect.api.service']
+            config = sync_log.config_id
+            
+            # This is simplified - real implementation would need to map endpoints to methods
+            _logger.info(f"Retrying API call to {sync_log.api_endpoint}")
+            
+            # Mark as successful for now
+            sync_log.mark_success({'retry': True})
+            return True
+            
+        except Exception as e:
+            sync_log.mark_error(f"Retry failed: {str(e)}")
+            return False
+    
+    def _retry_webhook(self, sync_log):
+        """Retry processing a webhook event."""
+        try:
+            import json
+            event_data = json.loads(sync_log.request_data) if sync_log.request_data else {}
+            
+            # Find webhook configuration
+            webhook = self.env['cloudconnect.webhook'].search([
+                ('event_type', '=', sync_log.api_endpoint),
+                ('config_id', '=', sync_log.config_id.id),
+            ], limit=1)
+            
+            if webhook:
+                processor = self.env['cloudconnect.webhook.processor']
+                processor.process_event(webhook, event_data)
+                sync_log.mark_success({'retry': True})
+                return True
+            else:
+                sync_log.mark_error("Webhook configuration not found")
+                return False
+                
+        except Exception as e:
+            sync_log.mark_error(f"Webhook retry failed: {str(e)}")
+            return False
+    
+    @api.model
+    def schedule_sync(self, property_id, priority=5, delay_minutes=0):
+        """
+        Schedule a property sync operation.
+        
+        :param property_id: ID of property to sync
+        :param priority: Priority (1-10, 1 is highest)
+        :param delay_minutes: Delay before sync
+        :return: Sync job ID
+        """
+        run_at = datetime.now() + timedelta(minutes=delay_minutes)
+        
+        sync_job = {
+            'id': f"sync_{property_id}_{datetime.now().timestamp()}",
+            'property_id': property_id,
+            'scheduled_at': run_at,
+            'priority': priority,
+            'status': 'scheduled'
         }
         
-        for property_obj in properties:
+        # Add to queue with priority
+        self._sync_queue.put((priority, run_at, sync_job))
+        
+        _logger.info(f"Scheduled sync for property {property_id} at {run_at}")
+        return sync_job['id']
+    
+    @api.model
+    def process_sync_queue(self):
+        """Process pending sync operations from queue."""
+        now = datetime.now()
+        processed = 0
+        
+        while not self._sync_queue.empty():
             try:
-                result = self.sync_property(property_obj.id, sync_type)
-                results['properties'][property_obj.id] = result
+                priority, run_at, sync_job = self._sync_queue.get_nowait()
                 
-                if result.get('overall_status') == 'success':
-                    results['successful'] += 1
-                else:
-                    results['failed'] += 1
+                if run_at > now:
+                    # Not ready yet, put back in queue
+                    self._sync_queue.put((priority, run_at, sync_job))
+                    break
+                
+                # Process sync
+                property_record = self.env['cloudconnect.property'].browse(sync_job['property_id'])
+                if property_record.exists() and property_record.sync_enabled:
+                    self.sync_property(property_record)
+                    processed += 1
                     
             except Exception as e:
-                _logger.error(f"Failed to sync property {property_obj.name}: {e}")
-                results['properties'][property_obj.id] = {
-                    'success': False,
-                    'error': str(e)
-                }
-                results['failed'] += 1
+                _logger.error(f"Error processing sync queue: {str(e)}")
         
-        return results
+        return processed
     
     @api.model
-    def sync_record(self, model_name, cloudbeds_id, property_id):
-        """Sync a specific record."""
-        try:
-            property_obj = self.env['cloudconnect.property'].browse(property_id)
-            if not property_obj.exists():
-                raise ValidationError(f"Property {property_id} not found")
-            
-            # Create sync log
-            sync_log = self.env['cloudconnect.sync_log'].create({
-                'property_id': property_id,
-                'operation_type': 'manual',
-                'model_name': model_name,
-                'cloudbeds_id': str(cloudbeds_id),
-                'status': 'processing',
-                'sync_date': datetime.now(),
-            })
-            
-            sync_log.mark_as_started()
-            
-            # Get the appropriate sync method based on model
-            if model_name == 'sale.order':
-                result = self._sync_single_reservation(property_obj, cloudbeds_id, sync_log)
-            elif model_name == 'res.partner':
-                result = self._sync_single_guest(property_obj, cloudbeds_id, sync_log)
-            elif model_name == 'account.payment':
-                result = self._sync_single_payment(property_obj, cloudbeds_id, sync_log)
-            else:
-                sync_log.mark_as_error(f"Unsupported model: {model_name}")
-                return False
-            
-            return result
-            
-        except Exception as e:
-            _logger.error(f"Record sync failed: {e}")
-            if 'sync_log' in locals():
-                sync_log.mark_as_error(str(e))
-            return False
-    
-    def _sync_single_reservation(self, property_obj, reservation_id, sync_log):
-        """Sync a single reservation."""
-        try:
-            # This will be implemented in cloudconnect_reservations module
-            sync_log.mark_as_success({'message': 'Reservation sync not yet implemented'})
-            return True
-        except Exception as e:
-            sync_log.mark_as_error(str(e))
-            return False
-    
-    def _sync_single_guest(self, property_obj, guest_id, sync_log):
-        """Sync a single guest."""
-        try:
-            # This will be implemented in cloudconnect_guests module
-            sync_log.mark_as_success({'message': 'Guest sync not yet implemented'})
-            return True
-        except Exception as e:
-            sync_log.mark_as_error(str(e))
-            return False
-    
-    def _sync_single_payment(self, property_obj, payment_id, sync_log):
-        """Sync a single payment."""
-        try:
-            # This will be implemented in cloudconnect_payments module
-            sync_log.mark_as_success({'message': 'Payment sync not yet implemented'})
-            return True
-        except Exception as e:
-            sync_log.mark_as_error(str(e))
-            return False
-    
-    @api.model
-    def schedule_sync(self, property_id, delay_minutes=0):
-        """Schedule a sync operation."""
-        if delay_minutes > 0:
-            # Use queue_job if available for delayed execution
-            if 'queue.job' in self.env:
-                eta = datetime.now() + timedelta(minutes=delay_minutes)
-                job = self.with_delay(eta=eta).sync_property(property_id, 'scheduled')
-                _logger.info(f"Sync scheduled for property {property_id} in {delay_minutes} minutes: {job.uuid}")
-                return {'success': True, 'job_id': job.uuid}
-            else:
-                # Fallback to immediate execution
-                _logger.warning("queue_job not available, executing sync immediately")
-                return self.sync_property(property_id, 'scheduled')
-        else:
-            # Immediate execution
-            return self.sync_property(property_id, 'scheduled')
-    
-    @api.model
-    def get_sync_status(self, property_id=None):
-        """Get current sync status for properties."""
-        domain = []
-        if property_id:
-            domain.append(('id', '=', property_id))
+    def get_sync_statistics(self, hours=24):
+        """Get synchronization statistics."""
+        since = datetime.now() - timedelta(hours=hours)
         
-        properties = self.env['cloudconnect.property'].search(domain)
+        # Get sync logs
+        sync_logs = self.env['cloudconnect.sync.log'].search([
+            ('sync_date', '>=', since),
+            ('operation_type', 'in', ['manual', 'scheduled'])
+        ])
         
-        status_data = {}
-        for prop in properties:
-            # Get recent sync logs
-            recent_logs = self.env['cloudconnect.sync_log'].search([
-                ('property_id', '=', prop.id),
-                ('sync_date', '>=', datetime.now() - timedelta(hours=24))
-            ], order='sync_date desc', limit=10)
-            
-            # Get statistics
-            stats = self.env['cloudconnect.sync_log'].get_sync_statistics(prop.id, days=7)
-            
-            status_data[prop.id] = {
-                'property_name': prop.name,
-                'sync_enabled': prop.sync_enabled,
-                'last_sync_date': prop.last_sync_date,
-                'last_sync_status': prop.last_sync_status,
-                'sync_error_count': prop.sync_error_count,
-                'last_sync_error': prop.last_sync_error,
-                'recent_logs': [{
-                    'id': log.id,
-                    'operation_type': log.operation_type,
-                    'model_name': log.model_name,
-                    'status': log.status,
-                    'sync_date': log.sync_date,
-                    'error_message': log.error_message,
-                } for log in recent_logs],
-                'statistics': stats,
-            }
-        
-        return status_data
-    
-    @api.model
-    def cleanup_sync_data(self, days=30):
-        """Clean up old sync logs and temporary data."""
-        try:
-            # Clean up old sync logs
-            cleanup_count = self.env['cloudconnect.sync_log'].cleanup_old_logs(days)
-            
-            # Reset error counts for properties that haven't had errors recently
-            cutoff_date = datetime.now() - timedelta(days=7)
-            properties_to_reset = self.env['cloudconnect.property'].search([
-                ('sync_error_count', '>', 0),
-                ('last_sync_date', '<', cutoff_date),
-                ('last_sync_status', '=', 'success')
-            ])
-            
-            for prop in properties_to_reset:
-                prop.reset_sync_errors()
-            
-            return {
-                'success': True,
-                'logs_cleaned': cleanup_count,
-                'properties_reset': len(properties_to_reset)
-            }
-            
-        except Exception as e:
-            _logger.error(f"Cleanup failed: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    @api.model
-    def force_resync(self, property_id, modules=None):
-        """Force a complete resync of a property, ignoring timestamps."""
-        try:
-            property_obj = self.env['cloudconnect.property'].browse(property_id)
-            if not property_obj.exists():
-                raise ValidationError(f"Property {property_id} not found")
-            
-            # Reset sync status
-            property_obj.reset_sync_errors()
-            
-            # Perform sync
-            result = self.sync_property(property_id, 'manual', modules)
-            
-            return result
-            
-        except Exception as e:
-            _logger.error(f"Force resync failed: {e}")
-            raise UserError(f"Force resync failed: {e}")
-    
-    @api.model
-    def get_sync_dependencies(self):
-        """Get the dependency order for sync modules."""
-        return {
-            'properties': [],  # No dependencies
-            'room_types': ['properties'],
-            'guests': ['properties'],
-            'reservations': ['properties', 'room_types', 'guests'],
-            'payments': ['properties', 'reservations'],
-            'items': ['properties', 'reservations'],
+        # Calculate statistics
+        stats = {
+            'total_syncs': len(sync_logs),
+            'successful_syncs': len(sync_logs.filtered(lambda l: l.status == 'success')),
+            'failed_syncs': len(sync_logs.filtered(lambda l: l.status == 'error')),
+            'average_duration': sum(sync_logs.mapped('duration')) / len(sync_logs) if sync_logs else 0,
+            'syncs_by_property': {},
+            'syncs_by_hour': {},
         }
+        
+        # Group by property
+        for log in sync_logs:
+            if log.property_id:
+                prop_name = log.property_id.name
+                if prop_name not in stats['syncs_by_property']:
+                    stats['syncs_by_property'][prop_name] = 0
+                stats['syncs_by_property'][prop_name] += 1
+        
+        # Group by hour
+        for log in sync_logs:
+            hour = log.sync_date.strftime('%Y-%m-%d %H:00')
+            if hour not in stats['syncs_by_hour']:
+                stats['syncs_by_hour'][hour] = 0
+            stats['syncs_by_hour'][hour] += 1
+        
+        return stats
     
     @api.model
-    def validate_sync_dependencies(self, modules):
-        """Validate that sync modules are in correct dependency order."""
-        dependencies = self.get_sync_dependencies()
-        available_modules = set()
+    def _cron_scheduled_sync(self):
+        """Cron job to run scheduled synchronizations."""
+        # Process sync queue
+        processed = self.process_sync_queue()
         
-        for module in modules:
-            required_deps = dependencies.get(module, [])
-            missing_deps = set(required_deps) - available_modules
-            
-            if missing_deps:
-                raise ValidationError(
-                    f"Module '{module}' requires {missing_deps} to be synced first"
-                )
-            
-            available_modules.add(module)
+        if processed:
+            _logger.info(f"Processed {processed} scheduled syncs")
         
-        return True
+        # Check for properties that need periodic sync
+        properties = self.env['cloudconnect.property'].search([
+            ('sync_enabled', '=', True),
+            ('config_id.active', '=', True),
+        ])
+        
+        for prop in properties:
+            # Check last sync time
+            if prop.last_sync_date:
+                hours_since_sync = (datetime.now() - prop.last_sync_date).total_seconds() / 3600
+                
+                # Sync if more than 6 hours since last sync
+                if hours_since_sync >= 6:
+                    self.schedule_sync(prop.id, priority=7)

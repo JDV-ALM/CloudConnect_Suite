@@ -5,54 +5,56 @@
     'category': 'Hospitality',
     'summary': 'Core module for Cloudbeds PMS integration',
     'description': """
-CloudConnect Core
-=================
+CloudConnect Core Module
+========================
 
-This is the base module for the CloudConnect suite that provides infrastructure
-for integrating with Cloudbeds PMS, including:
-
+Base module for CloudConnect suite providing:
 - OAuth 2.0 authentication with Cloudbeds
-- Centralized configuration management
-- Webhook processing and validation
-- API rate limiting and retry logic
-- Sync logging and monitoring
-- Property and timezone management
+- Centralized configuration
+- Webhook management
+- Synchronization engine
+- Shared services and utilities
 
-Required for all other CloudConnect modules.
+This module serves as the foundation for all CloudConnect extension modules.
     """,
-    'author': 'CloudConnect Team',
+    'author': 'CloudConnect',
     'website': 'https://www.cloudconnect.com',
     'license': 'LGPL-3',
     'depends': [
         'base',
         'web',
+        'mail',
     ],
-    'external_dependencies': {
-        'python': ['requests', 'cryptography'],
-    },
     'data': [
         # Security
         'security/cloudconnect_security.xml',
         'security/ir.model.access.csv',
         
         # Data
-        'data/cloudconnect_cron_jobs.xml',
+        'data/ir_cron_data.xml',
+        
+        # Wizards
+        'wizards/cloudconnect_setup_wizard_views.xml',
         
         # Views
-        'views/cloudconnect_menus.xml',
         'views/cloudconnect_config_views.xml',
         'views/cloudconnect_property_views.xml',
         'views/cloudconnect_webhook_views.xml',
         'views/cloudconnect_sync_log_views.xml',
         'views/cloudconnect_dashboard_views.xml',
-        
-        # Wizards
-        'wizards/setup_wizard_views.xml',
+        'views/cloudconnect_menu.xml',
     ],
-    'demo': [],
+    'assets': {
+        'web.assets_backend': [
+            'cloudconnect_core/static/src/js/dashboard.js',
+            'cloudconnect_core/static/src/css/dashboard.css',
+        ],
+    },
+    'images': [
+        'static/description/icon.png',
+    ],
     'installable': True,
-    'auto_install': False,
     'application': True,
-    'sequence': 1,
+    'auto_install': False,
     'post_init_hook': 'post_init_hook',
 }
