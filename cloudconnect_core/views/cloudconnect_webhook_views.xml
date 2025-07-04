@@ -11,16 +11,17 @@
                 <field name="event_type"/>
                 <field name="property_id"/>
                 <field name="active" widget="boolean_toggle"/>
+                <field name="is_registered" column_invisible="True"/>
                 <field name="cloudbeds_webhook_id" groups="cloudconnect_core.group_cloudconnect_manager"/>
                 <field name="last_received"/>
                 <field name="total_received"/>
                 <field name="total_errors" decoration-danger="total_errors > 0"/>
                 <button name="action_register" type="object" 
                         string="Register" class="btn-sm btn-primary"
-                        invisible="cloudbeds_webhook_id != False"/>
+                        invisible="is_registered"/>
                 <button name="action_unregister" type="object" 
                         string="Unregister" class="btn-sm btn-warning"
-                        invisible="not cloudbeds_webhook_id"/>
+                        invisible="not is_registered"/>
             </tree>
         </field>
     </record>
@@ -34,22 +35,22 @@
                 <header>
                     <button name="action_register" type="object" 
                             string="Register with Cloudbeds" class="btn-primary"
-                            invisible="cloudbeds_webhook_id != False or not active"/>
+                            invisible="is_registered or not active"
+                            groups="cloudconnect_core.group_cloudconnect_manager"/>
                     <button name="action_unregister" type="object" 
                             string="Unregister" class="btn-warning"
-                            invisible="not cloudbeds_webhook_id"/>
+                            invisible="not is_registered"
+                            groups="cloudconnect_core.group_cloudconnect_manager"/>
                     <button name="action_regenerate_secret" type="object" 
                             string="Regenerate Secret" class="btn-secondary"
                             groups="cloudconnect_core.group_cloudconnect_manager"
                             confirm="Are you sure you want to regenerate the secret key? This will invalidate the current key."/>
                 </header>
                 <sheet>
-                    <widget name="web_ribbon" title="Not Registered" 
-                            invisible="cloudbeds_webhook_id != False"
-                            bg_color="bg-warning"/>
-                    <widget name="web_ribbon" title="Inactive" 
-                            invisible="active"
-                            bg_color="bg-danger"/>
+                    <widget name="web_ribbon" title="Not Registered" invisible="is_registered" bg_color="bg-warning"/>
+                    <widget name="web_ribbon" title="Inactive" invisible="active" bg_color="bg-danger"/>
+                    <field name="is_registered" invisible="1"/>
+                    <field name="can_register" invisible="1"/>
                     <div class="oe_title">
                         <h1>
                             <field name="display_name" readonly="1"/>
@@ -58,18 +59,13 @@
                     
                     <group>
                         <group string="Configuration">
-                            <field name="config_id" 
-                                   readonly="cloudbeds_webhook_id != False"/>
-                            <field name="event_type" 
-                                   readonly="cloudbeds_webhook_id != False"/>
-                            <field name="property_id" 
-                                   readonly="cloudbeds_webhook_id != False"
-                                   domain="[('config_id', '=', config_id)]"/>
+                            <field name="config_id" readonly="is_registered"/>
+                            <field name="event_type" readonly="is_registered"/>
+                            <field name="property_id" readonly="is_registered" domain="[('config_id', '=', config_id)]"/>
                             <field name="active"/>
                         </group>
                         <group string="Status">
-                            <field name="cloudbeds_webhook_id" readonly="1"
-                                   groups="cloudconnect_core.group_cloudconnect_manager"/>
+                            <field name="cloudbeds_webhook_id" readonly="1" groups="cloudconnect_core.group_cloudconnect_manager"/>
                             <field name="last_received" readonly="1"/>
                             <field name="total_received" readonly="1"/>
                             <field name="total_errors" readonly="1"/>
@@ -118,12 +114,10 @@
                                 </group>
                                 <group>
                                     <field name="total_errors" readonly="1"/>
-                                    <button name="%(action_cloudconnect_sync_log)d" 
-                                            type="action" string="View Logs" 
-                                            class="btn-link"
-                                            context="{'search_default_webhook_events': 1, 
-                                                     'search_default_property_id': property_id,
-                                                     'search_default_api_endpoint': event_type}"/>
+                                    <button name="action_view_logs" 
+                                            type="object" 
+                                            string="View Logs" 
+                                            class="btn-link"/>
                                 </group>
                             </group>
                         </page>
@@ -155,9 +149,9 @@
                         domain="[('active', '=', False)]"/>
                 <separator/>
                 <filter string="Registered" name="registered" 
-                        domain="[('cloudbeds_webhook_id', '!=', False)]"/>
+                        domain="[('is_registered', '=', True)]"/>
                 <filter string="Not Registered" name="not_registered" 
-                        domain="[('cloudbeds_webhook_id', '=', False)]"/>
+                        domain="[('is_registered', '=', False)]"/>
                 <separator/>
                 <filter string="Has Errors" name="has_errors" 
                         domain="[('total_errors', '>', 0)]"/>

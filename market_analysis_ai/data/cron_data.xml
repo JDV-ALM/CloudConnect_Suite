@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Cron Job para polling de Telegram -->
+        <record id="ir_cron_telegram_polling" model="ir.cron">
+            <field name="name">Market Analysis: Telegram Polling</field>
+            <field name="model_id" ref="model_market_analysis_settings"/>
+            <field name="state">code</field>
+            <field name="code">
+settings = model.search([('active', '=', True)], limit=1)
+if settings:
+    model.process_telegram_messages()
+            </field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">minutes</field>
+            <field name="numbercall">-1</field>
+            <field name="active" eval="True"/>
+            <field name="doall" eval="False"/>
+        </record>
+    </data>
+</odoo>

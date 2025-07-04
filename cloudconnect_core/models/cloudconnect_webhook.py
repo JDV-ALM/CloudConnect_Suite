@@ -370,3 +370,27 @@ class CloudConnectWebhook(models.Model):
                     _logger.error(f"Error unregistering webhook on deletion: {str(e)}")
         
         return super().unlink()
+    
+    def action_view_logs(self):
+        """Open sync logs filtered for this webhook."""
+        self.ensure_one()
+        
+        action = self.env['ir.actions.act_window']._for_xml_id('cloudconnect_core.action_cloudconnect_sync_log')
+        
+        # Update context for filtering
+        action['context'] = {
+            'search_default_webhook_events': 1,
+            'search_default_property_id': self.property_id.id if self.property_id else False,
+            'search_default_api_endpoint': self.event_type,
+        }
+        
+        # Add domain filter
+        domain = [('operation_type', '=', 'webhook')]
+        if self.property_id:
+            domain.append(('property_id', '=', self.property_id.id))
+        if self.event_type:
+            domain.append(('api_endpoint', '=', self.event_type))
+        
+        action['domain'] = domain
+        
+        return action

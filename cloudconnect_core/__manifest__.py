@@ -36,11 +36,11 @@ This module serves as the foundation for all CloudConnect extension modules.
         # Wizards
         'wizards/cloudconnect_setup_wizard_views.xml',
         
-        # Views
-        'views/cloudconnect_config_views.xml',
-        'views/cloudconnect_property_views.xml',
-        'views/cloudconnect_webhook_views.xml',
-        'views/cloudconnect_sync_log_views.xml',
+        # Views - Ordenadas para que las acciones se definan antes de ser referenciadas
+        'views/cloudconnect_property_views.xml',  # Define action_cloudconnect_property
+        'views/cloudconnect_webhook_views.xml',   # Define action_cloudconnect_webhook
+        'views/cloudconnect_sync_log_views.xml',  # Define action_cloudconnect_sync_log
+        'views/cloudconnect_config_views.xml',    # Usa las acciones definidas arriba
         'views/cloudconnect_dashboard_views.xml',
         'views/cloudconnect_menu.xml',
     ],

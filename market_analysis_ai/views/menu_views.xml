@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Menú Principal -->
+    <menuitem id="menu_market_analysis_root"
+              name="AI Analysis"
+              sequence="10"
+              web_icon="market_analysis_ai,static/description/icon.png"/>
+    
+    <!-- Submenú de Análisis -->
+    <menuitem id="menu_market_analysis_report"
+              name="Análisis de Mercados"
+              parent="menu_market_analysis_root"
+              action="action_market_analysis_report"
+              sequence="10"/>
+    
+    <!-- Submenú de Configuración -->
+    <menuitem id="menu_market_analysis_config"
+              name="Configuración"
+              parent="menu_market_analysis_root"
+              sequence="90"/>
+    
+    <menuitem id="menu_market_analysis_settings"
+              name="API Settings"
+              parent="menu_market_analysis_config"
+              action="action_market_analysis_settings"
+              sequence="10"
+              groups="base.group_system"/>
+</odoo>

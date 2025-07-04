@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Form View para Report -->
+    <record id="view_market_analysis_report_form" model="ir.ui.view">
+        <field name="name">market.analysis.report.form</field>
+        <field name="model">market.analysis.report</field>
+        <field name="arch" type="xml">
+            <form string="Análisis de Mercado">
+                <header>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,processed,error"/>
+                    <button name="action_reprocess" 
+                            type="object" 
+                            string="Reprocesar" 
+                            class="btn-primary"
+                            invisible="state != 'error'"
+                            icon="fa-refresh"/>
+                </header>
+                <sheet>
+                    <widget name="web_ribbon" text="Archivado" bg_color="text-bg-danger" invisible="active"/>
+                    <field name="active" invisible="1"/>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" required="1" placeholder="Línea de análisis..."/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group string="Información del Producto">
+                            <field name="product_name" placeholder="Nombre del producto"/>
+                            <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                        <group string="Información de Recepción">
+                            <field name="date_received"/>
+                            <field name="telegram_user"/>
+                            <field name="state" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Mensaje Original">
+                        <field name="message" widget="text" readonly="1"/>
+                    </group>
+                    <group string="Notas de Procesamiento" invisible="not processing_notes">
+                        <field name="processing_notes" widget="text" readonly="1"/>
+                    </group>
+                </sheet>
+                <div class="oe_chatter" name="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="message_ids"/>
+                    <field name="activity_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- List View para Report -->
+    <record id="view_market_analysis_report_list" model="ir.ui.view">
+        <field name="name">market.analysis.report.list</field>
+        <field name="model">market.analysis.report</field>
+        <field name="arch" type="xml">
+            <list string="Análisis de Mercados" default_order="date_received desc">
+                <field name="date_received" widget="datetime"/>
+                <field name="product_name"/>
+                <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="telegram_user" optional="show"/>
+                <field name="state" widget="badge" 
+                       decoration-success="state == 'processed'"
+                       decoration-danger="state == 'error'"
+                       decoration-warning="state == 'draft'"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Search View para Report -->
+    <record id="view_market_analysis_report_search" model="ir.ui.view">
+        <field name="name">market.analysis.report.search</field>
+        <field name="model">market.analysis.report</field>
+        <field name="arch" type="xml">
+            <search>
+                <field name="name"/>
+                <field name="product_name"/>
+                <field name="telegram_user"/>
+                <separator/>
+                <filter string="Procesados" name="processed" domain="[('state', '=', 'processed')]"/>
+                <filter string="Con Error" name="error" domain="[('state', '=', 'error')]"/>
+                <filter string="Borradores" name="draft" domain="[('state', '=', 'draft')]"/>
+                <separator/>
+                <filter string="Hoy" name="today" domain="[('date_received', '&gt;=', datetime.datetime.now().replace(hour=0, minute=0, second=0)), ('date_received', '&lt;=', datetime.datetime.now().replace(hour=23, minute=59, second=59))]"/>
+                <filter string="Esta Semana" name="week" domain="[('date_received', '&gt;=', (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                <filter string="Este Mes" name="month" domain="[('date_received', '&gt;=', (datetime.datetime.now().replace(day=1)).strftime('%Y-%m-%d'))]"/>
+                <separator/>
+                <filter string="Archivados" name="archived" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Agrupar Por">
+                    <filter string="Producto" name="group_product" context="{'group_by': 'product_name'}"/>
+                    <filter string="Usuario" name="group_user" context="{'group_by': 'telegram_user'}"/>
+                    <filter string="Estado" name="group_state" context="{'group_by': 'state'}"/>
+                    <filter string="Fecha" name="group_date" context="{'group_by': 'date_received:day'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action para Report -->
+    <record id="action_market_analysis_report" model="ir.actions.act_window">
+        <field name="name">Análisis de Mercados</field>
+        <field name="res_model">market.analysis.report</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_market_analysis_report_search"/>
+        <field name="context">{'search_default_processed': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay reportes de precios aún
+            </p>
+            <p>
+                Los reportes se crearán automáticamente cuando se reciban
+                mensajes de Telegram con información de precios.
+            </p>
+        </field>
+    </record>
+</odoo>

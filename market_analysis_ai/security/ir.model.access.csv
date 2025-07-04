@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_market_analysis_settings_admin,market.analysis.settings admin,model_market_analysis_settings,base.group_system,1,1,1,1
+access_market_analysis_settings_user,market.analysis.settings user,model_market_analysis_settings,base.group_user,1,0,0,0
+access_market_analysis_report_admin,market.analysis.report admin,model_market_analysis_report,base.group_system,1,1,1,1
+access_market_analysis_report_user,market.analysis.report user,model_market_analysis_report,base.group_user,1,1,1,0
