@@ -78,11 +78,11 @@
         <field name="name">market.analysis.settings.list</field>
         <field name="model">market.analysis.settings</field>
         <field name="arch" type="xml">
-            <list string="Configuraciones">
+            <tree string="Configuraciones">
                 <field name="create_date"/>
                 <field name="active" widget="boolean_toggle"/>
                 <field name="last_telegram_offset"/>
-            </list>
+            </tree>
         </field>
     </record>
 
