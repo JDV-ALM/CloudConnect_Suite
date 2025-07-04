@@ -20,6 +20,9 @@
     'external_dependencies': {
         'python': ['openai', 'requests'],
     },
+    'requirements': [
+        'requirements.txt',
+    ],
     'installable': True,
     'application': True,
     'auto_install': False,
