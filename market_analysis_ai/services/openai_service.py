@@ -126,6 +126,16 @@ class OpenAIService:
     def test_connection(self):
         """Prueba la conexión con OpenAI"""
         try:
+            # Validar formato de API key
+            if not self.client.api_key:
+                _logger.error("API Key de OpenAI vacía")
+                return False
+                
+            if not self.client.api_key.startswith(('sk-', 'sk-proj-')):
+                _logger.error("API Key de OpenAI con formato inválido")
+                return False
+            
+            # Intentar hacer una llamada simple
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=[
@@ -134,10 +144,27 @@ class OpenAIService:
                 max_tokens=10
             )
             
-            return response.choices[0].message.content is not None
-            
+            # Verificar que la respuesta tenga contenido
+            if response and response.choices and response.choices[0].message.content:
+                _logger.info("Conexión con OpenAI exitosa")
+                return True
+            else:
+                _logger.error("Respuesta vacía de OpenAI")
+                return False
+                
         except Exception as e:
-            _logger.error(f"Error al probar conexión con OpenAI: {str(e)}")
+            error_msg = str(e)
+            
+            # Mensajes de error más descriptivos
+            if "401" in error_msg or "Incorrect API key" in error_msg:
+                _logger.error("API Key de OpenAI inválida o expirada")
+            elif "429" in error_msg:
+                _logger.error("Límite de tasa excedido en OpenAI")
+            elif "model" in error_msg:
+                _logger.error(f"Modelo {self.model} no disponible. Considere usar gpt-3.5-turbo")
+            else:
+                _logger.error(f"Error al probar conexión con OpenAI: {error_msg}")
+            
             return False
     
     def analyze_price_trends(self, products_data):
@@ -157,7 +184,7 @@ class OpenAIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=100,
+                max_tokens=500,
                 temperature=0.3
             )
             

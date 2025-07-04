@@ -53,36 +53,43 @@ class MarketAnalysisSettings(models.Model):
         """Prueba la conexión con OpenAI y Telegram"""
         self.ensure_one()
         
+        messages = []
+        
         # Test OpenAI
         try:
             from ..services.openai_service import OpenAIService
             service = OpenAIService(self.openai_api_key)
             response = service.test_connection()
             if response:
-                message = "✓ Conexión con OpenAI exitosa"
+                messages.append("✓ Conexión con OpenAI exitosa")
             else:
-                message = "✗ Error al conectar con OpenAI"
+                messages.append("✗ Error al conectar con OpenAI: Sin respuesta")
+        except ImportError as e:
+            messages.append(f"✗ Error: Librería OpenAI no instalada. Ejecute: pip install openai")
         except Exception as e:
-            message = f"✗ Error OpenAI: {str(e)}"
+            messages.append(f"✗ Error OpenAI: {str(e)}")
         
         # Test Telegram
         try:
             from ..services.telegram_service import TelegramService
             telegram = TelegramService(self.telegram_bot_token)
             if telegram.test_connection():
-                message += "\n✓ Conexión con Telegram exitosa"
+                messages.append("✓ Conexión con Telegram exitosa")
             else:
-                message += "\n✗ Error al conectar con Telegram"
+                messages.append("✗ Error al conectar con Telegram")
+        except ImportError as e:
+            messages.append(f"✗ Error: Librería requests no instalada. Ejecute: pip install requests")
         except Exception as e:
-            message += f"\n✗ Error Telegram: {str(e)}"
+            messages.append(f"✗ Error Telegram: {str(e)}")
         
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
                 'title': 'Test de Conexión',
-                'message': message,
-                'sticky': False,
+                'message': '\n'.join(messages),
+                'sticky': True,
+                'type': 'warning' if any('✗' in m for m in messages) else 'success',
             }
         }
     
