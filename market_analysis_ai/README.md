@@ -76,32 +76,7 @@ Los usuarios pueden enviar mensajes en lenguaje natural al bot de Telegram:
 - **Filtros**: Por fecha, producto, usuario, estado
 - **Agrupación**: Por producto para ver tendencias
 
-## Estructura del módulo
 
-```
-market_analysis_ai/
-├── __manifest__.py
-├── __init__.py
-├── security/
-│   └── ir.model.access.csv
-├── models/
-│   ├── __init__.py
-│   ├── market_analysis_settings.py
-│   └── market_analysis_report.py
-├── services/
-│   ├── __init__.py
-│   ├── telegram_service.py
-│   └── openai_service.py
-├── views/
-│   ├── market_analysis_settings_views.xml
-│   ├── market_analysis_report_views.xml
-│   └── menu_views.xml
-├── data/
-│   └── cron_data.xml
-└── static/
-    └── description/
-        └── icon.png
-```
 
 ## Personalización
 
