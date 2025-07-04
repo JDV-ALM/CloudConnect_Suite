@@ -157,7 +157,7 @@ class OpenAIService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                max_tokens=500,
+                max_tokens=100,
                 temperature=0.3
             )
             

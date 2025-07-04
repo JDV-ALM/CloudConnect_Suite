@@ -22,11 +22,7 @@ class MarketAnalysisSettings(models.Model):
         help='Token del bot de Telegram'
     )
     
-    telegram_chat_id = fields.Char(
-        string='Chat ID de Telegram',
-        required=True,
-        help='ID del chat donde el bot recibirá mensajes'
-    )
+
     
     active = fields.Boolean(
         string='Activo',
@@ -74,7 +70,7 @@ class MarketAnalysisSettings(models.Model):
         # Test Telegram
         try:
             from ..services.telegram_service import TelegramService
-            telegram = TelegramService(self.telegram_bot_token, self.telegram_chat_id)
+            telegram = TelegramService(self.telegram_bot_token)
             if telegram.test_connection():
                 message += "\n✓ Conexión con Telegram exitosa"
             else:
@@ -105,7 +101,7 @@ class MarketAnalysisSettings(models.Model):
             from ..services.openai_service import OpenAIService
             
             # Inicializar servicios
-            telegram = TelegramService(settings.telegram_bot_token, settings.telegram_chat_id)
+            telegram = TelegramService(settings.telegram_bot_token)
             openai_service = OpenAIService(settings.openai_api_key)
             
             # Obtener mensajes nuevos
@@ -127,6 +123,7 @@ class MarketAnalysisSettings(models.Model):
                             report_data = {
                                 "original_message": message_data["text"],
                                 "telegram_user": message_data.get("username", "") or message_data.get("first_name", "Usuario"),
+                                "chat_id": message_data["chat_id"],
                                 "products": ai_result["products"]
                             }
                             
@@ -139,7 +136,7 @@ class MarketAnalysisSettings(models.Model):
                         else:
                             # Enviar mensaje de error
                             error_msg = ai_result.get("error", "No se pudieron identificar productos en el mensaje")
-                            telegram.send_error_message(error_msg)
+                            telegram.send_error_message(error_msg, message_data["chat_id"])
                     
                     # Actualizar offset
                     if message_data:

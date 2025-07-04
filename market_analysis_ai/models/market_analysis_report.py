@@ -61,6 +61,11 @@ class MarketAnalysisReport(models.Model):
         help='Usuario que envió el mensaje'
     )
     
+    telegram_chat_id = fields.Char(
+        string='Chat ID',
+        help='ID del chat de Telegram'
+    )
+    
     processing_notes = fields.Text(
         string='Notas de Procesamiento',
         help='Información adicional del procesamiento con AI'
@@ -80,6 +85,8 @@ class MarketAnalysisReport(models.Model):
                     'price': product.get('price', 0.0),
                     'message': message_data.get('original_message', ''),
                     'telegram_user': message_data.get('telegram_user', ''),
+                'telegram_chat_id': str(message_data.get('chat_id', '')),
+                    'telegram_chat_id': str(message_data.get('chat_id', '')),
                     'date_received': datetime.now(),
                     'state': 'processed',
                     'processing_notes': product.get('notes', '')

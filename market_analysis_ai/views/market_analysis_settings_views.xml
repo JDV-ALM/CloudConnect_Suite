@@ -29,9 +29,6 @@
                             <field name="telegram_bot_token" 
                                    placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz..."
                                    required="1"/>
-                            <field name="telegram_chat_id" 
-                                   placeholder="-1001234567890"
-                                   required="1"/>
                         </group>
                     </group>
                     <group>
@@ -56,14 +53,8 @@
                                 <ol>
                                     <li>Crea un bot con <a href="https://t.me/BotFather" target="_blank">@BotFather</a></li>
                                     <li>Copia el token del bot</li>
-                                    <li>Para obtener el Chat ID:
-                                        <ul>
-                                            <li>Añade el bot a un grupo o inicia chat privado</li>
-                                            <li>Envía un mensaje</li>
-                                            <li>Visita: https://api.telegram.org/bot[TU_TOKEN]/getUpdates</li>
-                                            <li>Busca "chat":{"id": y copia el número</li>
-                                        </ul>
-                                    </li>
+                                    <li>El bot responderá automáticamente a cualquier usuario que le envíe mensajes</li>
+                                    <li>Los usuarios pueden enviar mensajes directamente al bot o agregarlo a grupos</li>
                                 </ol>
                             </div>
                         </page>
