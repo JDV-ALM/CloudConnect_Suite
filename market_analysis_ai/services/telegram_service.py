@@ -6,9 +6,8 @@ _logger = logging.getLogger(__name__)
 
 
 class TelegramService:
-    def __init__(self, token, chat_id):
+    def __init__(self, token):
         self.token = token
-        self.chat_id = chat_id
         self.base_url = f"https://api.telegram.org/bot{token}"
     
     def get_updates(self, offset=0):
@@ -33,12 +32,12 @@ class TelegramService:
             _logger.error(f"Error en get_updates: {str(e)}")
             return []
     
-    def send_message(self, text, chat_id=None):
+    def send_message(self, text, chat_id):
         """Envía un mensaje a Telegram"""
         try:
             url = f"{self.base_url}/sendMessage"
             params = {
-                "chat_id": chat_id or self.chat_id,
+                "chat_id": chat_id,
                 "text": text,
                 "parse_mode": "HTML"
             }
@@ -89,12 +88,8 @@ class TelegramService:
                 "date": message.get("date")
             }
             
-            # Solo procesar mensajes del chat configurado o mensajes directos
-            if str(message_data["chat_id"]) == str(self.chat_id) or message_data["chat_id"] == message_data["user_id"]:
-                return message_data
-            
-            _logger.info(f"Mensaje ignorado de chat_id: {message_data['chat_id']}")
-            return None
+            # Procesar todos los mensajes, sin filtrar por chat_id
+            return message_data
             
         except Exception as e:
             _logger.error(f"Error al procesar mensaje: {str(e)}")
@@ -118,10 +113,10 @@ class TelegramService:
         
         return response
     
-    def send_error_message(self, error_msg):
+    def send_error_message(self, error_msg, chat_id):
         """Envía un mensaje de error formateado"""
         message = f"❌ <b>Error al procesar mensaje</b>\n\n{error_msg}\n\n"
         message += "💡 <i>Por favor, envíe el reporte en formato:</i>\n"
         message += "<code>Producto: [nombre]\nPrecio: [valor]</code>"
         
-        return self.send_message(message)
+        return self.send_message(message, chat_id)
