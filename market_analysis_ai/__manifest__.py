@@ -7,8 +7,8 @@
         App para recibir reportes de precios de productos vía Telegram
         y procesarlos con OpenAI para análisis de mercados.
     """,
-    'author': 'Tu Empresa',
-    'website': 'https://www.tuempresa.com',
+    'author': 'Almus Dev',
+    'website': 'https://www.almus.dev',
     'depends': ['base', 'mail'],
     'data': [
         'security/ir.model.access.csv',

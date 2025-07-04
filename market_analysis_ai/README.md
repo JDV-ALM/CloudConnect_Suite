@@ -77,7 +77,6 @@ Los usuarios pueden enviar mensajes en lenguaje natural al bot de Telegram:
 - **Agrupación**: Por producto para ver tendencias
 
 
-
 ## Personalización
 
 ### Modificar el prompt de OpenAI
