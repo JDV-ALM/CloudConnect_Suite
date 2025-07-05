@@ -25,18 +25,38 @@ class MarketAnalysisSettings(models.Model):
         help='Ingrese su API Key de Claude (Anthropic)'
     )
     
-    ai_model = fields.Selection([
-        # OpenAI models
+    openai_model = fields.Selection([
         ('gpt-3.5-turbo', 'GPT-3.5 Turbo'),
         ('gpt-4', 'GPT-4'),
         ('gpt-4-turbo-preview', 'GPT-4 Turbo'),
-        # Claude models
+    ], string='Modelo OpenAI', 
+       default='gpt-3.5-turbo',
+       help='Seleccione el modelo de OpenAI a utilizar')
+    
+    claude_model = fields.Selection([
         ('claude-3-haiku-20240307', 'Claude 3 Haiku'),
         ('claude-3-sonnet-20240229', 'Claude 3 Sonnet'),
         ('claude-3-opus-20240229', 'Claude 3 Opus'),
-    ], string='Modelo de AI', 
-       default='gpt-3.5-turbo',
-       help='Seleccione el modelo de AI a utilizar')
+    ], string='Modelo Claude', 
+       default='claude-3-sonnet-20240229',
+       help='Seleccione el modelo de Claude a utilizar')
+    
+    # Campo computado para obtener el modelo activo
+    ai_model = fields.Char(
+        string='Modelo de AI',
+        compute='_compute_ai_model',
+        store=True
+    )
+    
+    @api.depends('ai_provider', 'openai_model', 'claude_model')
+    def _compute_ai_model(self):
+        for record in self:
+            if record.ai_provider == 'openai':
+                record.ai_model = record.openai_model
+            elif record.ai_provider == 'claude':
+                record.ai_model = record.claude_model
+            else:
+                record.ai_model = False
     
     telegram_bot_token = fields.Char(
         string='Token del Bot de Telegram',
@@ -83,9 +103,9 @@ class MarketAnalysisSettings(models.Model):
     def _onchange_ai_provider(self):
         """Actualiza el modelo por defecto según el proveedor"""
         if self.ai_provider == 'openai':
-            self.ai_model = 'gpt-3.5-turbo'
+            self.openai_model = self.openai_model or 'gpt-3.5-turbo'
         elif self.ai_provider == 'claude':
-            self.ai_model = 'claude-3-sonnet-20240229'
+            self.claude_model = self.claude_model or 'claude-3-sonnet-20240229'
     
     def action_test_connection(self):
         """Prueba la conexión con el proveedor de AI y Telegram"""
