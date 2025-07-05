@@ -57,14 +57,21 @@
                                    required="ai_provider == 'claude'"/>
                         </group>
                     </group>
-                    <group invisible="ai_provider != 'claude' or not available_claude_models or available_claude_models == '[]'">
-                        <separator string="Modelos Claude Disponibles" colspan="2"/>
-                        <div class="alert alert-info" role="alert">
-                            <p><strong>Modelos detectados:</strong></p>
-                            <field name="claude_models_display" readonly="1" nolabel="1"/>
-                            <p class="mt-2"><small>Use el ID del modelo (código) en el campo "Modelo Claude" arriba.</small></p>
+                    
+                    <!-- Sección de modelos Claude con layout mejorado -->
+                    <separator string="Modelos Claude Disponibles" invisible="ai_provider != 'claude' or not available_claude_models or available_claude_models == '[]'"/>
+                    <div class="row" invisible="ai_provider != 'claude' or not available_claude_models or available_claude_models == '[]'">
+                        <div class="col-12">
+                            <div class="alert alert-info" role="alert" style="margin: 10px 0;">
+                                <p><strong>Modelos detectados:</strong></p>
+                                <div style="width: 100%; overflow-x: auto;">
+                                    <field name="claude_models_display" readonly="1" nolabel="1" widget="html"/>
+                                </div>
+                                <p class="mt-2"><small>Use el ID del modelo (código) en el campo "Modelo Claude" arriba.</small></p>
+                            </div>
                         </div>
-                    </group>
+                    </div>
+                    
                     <group>
                         <group>
                             <field name="active"/>
