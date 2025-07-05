@@ -26,21 +26,34 @@ class MarketAnalysisSettings(models.Model):
         help='Ingrese su API Key de Claude (Anthropic)'
     )
     
-    # Campos de texto para almacenar modelos disponibles como JSON
+    # Modelos como Selection con valores predefinidos
+    openai_model = fields.Selection([
+        ('gpt-3.5-turbo', 'GPT-3.5 Turbo'),
+        ('gpt-4', 'GPT-4'),
+        ('gpt-4-turbo-preview', 'GPT-4 Turbo'),
+        ('gpt-4o', 'GPT-4o'),
+        ('gpt-4o-mini', 'GPT-4o Mini'),
+    ], string='Modelo OpenAI', 
+       default='gpt-3.5-turbo',
+       help='Seleccione el modelo de OpenAI a utilizar')
+    
+    # Para Claude, usamos un campo Char para permitir cualquier modelo
+    claude_model = fields.Char(
+        string='Modelo Claude',
+        default='claude-3-sonnet-20240229',
+        help='ID del modelo Claude a utilizar'
+    )
+    
+    # Campo para almacenar los modelos disponibles como JSON
     available_claude_models = fields.Text(
         string='Modelos Claude Disponibles',
         default='[]'
     )
     
-    # Campo de texto simple para el modelo seleccionado
-    openai_model = fields.Char(
-        string='Modelo OpenAI',
-        default='gpt-3.5-turbo'
-    )
-    
-    claude_model = fields.Char(
-        string='Modelo Claude',
-        default='claude-3-sonnet-20240229'
+    # Campo computado para mostrar modelos de forma legible
+    claude_models_display = fields.Html(
+        string='Modelos Disponibles',
+        compute='_compute_claude_models_display'
     )
     
     # Campo computado para obtener el modelo activo
@@ -67,12 +80,6 @@ class MarketAnalysisSettings(models.Model):
         help='Último update_id procesado de Telegram'
     )
     
-    # Campo computado para mostrar modelos de forma legible
-    claude_models_display = fields.Html(
-        string='Modelos Disponibles',
-        compute='_compute_claude_models_display'
-    )
-    
     @api.depends('available_claude_models')
     def _compute_claude_models_display(self):
         for record in self:
@@ -81,8 +88,14 @@ class MarketAnalysisSettings(models.Model):
                     models = json.loads(record.available_claude_models)
                     html = '<ul style="list-style-type: none; padding-left: 0;">'
                     for model in models:
-                        html += f'<li><strong>{model.get("name", "Sin nombre")}</strong><br/>'
-                        html += f'<code>{model.get("id", "")}</code></li>'
+                        # Resaltar el modelo actual
+                        is_current = model.get("id") == record.claude_model
+                        style = 'background-color: #d4edda; padding: 5px; border-radius: 3px;' if is_current else ''
+                        html += f'<li style="{style}"><strong>{model.get("name", "Sin nombre")}</strong><br/>'
+                        html += f'<code>{model.get("id", "")}</code>'
+                        if is_current:
+                            html += ' <span class="badge badge-success">Actual</span>'
+                        html += '</li><br/>'
                     html += '</ul>'
                     record.claude_models_display = html
                 else:
@@ -128,9 +141,11 @@ class MarketAnalysisSettings(models.Model):
     def _onchange_ai_provider(self):
         """Actualiza el modelo por defecto según el proveedor"""
         if self.ai_provider == 'openai':
-            self.openai_model = self.openai_model or 'gpt-3.5-turbo'
+            if not self.openai_model:
+                self.openai_model = 'gpt-3.5-turbo'
         elif self.ai_provider == 'claude':
-            self.claude_model = self.claude_model or 'claude-3-sonnet-20240229'
+            if not self.claude_model:
+                self.claude_model = 'claude-3-sonnet-20240229'
             # Si es Claude y tenemos API key, actualizar modelos
             if self.claude_api_key:
                 self._update_claude_models()
@@ -191,8 +206,8 @@ class MarketAnalysisSettings(models.Model):
                 messages.append(f"✗ Error al actualizar modelos Claude: {str(e)}")
         
         elif self.ai_provider == 'openai':
-            messages.append("ℹ Los modelos de OpenAI se mantienen estáticos por ahora")
-            messages.append("  • GPT-3.5 Turbo\n  • GPT-4\n  • GPT-4 Turbo")
+            messages.append("ℹ Los modelos de OpenAI están predefinidos:")
+            messages.append("  • GPT-3.5 Turbo\n  • GPT-4\n  • GPT-4 Turbo\n  • GPT-4o\n  • GPT-4o Mini")
         
         return {
             'type': 'ir.actions.client',
@@ -221,6 +236,7 @@ class MarketAnalysisSettings(models.Model):
                 response = service.test_connection()
                 if response:
                     messages.append("✓ Conexión con OpenAI exitosa")
+                    messages.append(f"  Modelo: {self.openai_model}")
                 else:
                     messages.append("✗ Error al conectar con OpenAI: Sin respuesta")
             
