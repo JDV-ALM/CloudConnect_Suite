@@ -80,28 +80,43 @@ class MarketAnalysisSettings(models.Model):
         help='Último update_id procesado de Telegram'
     )
     
-    @api.depends('available_claude_models')
+    @api.depends('available_claude_models', 'claude_model')
     def _compute_claude_models_display(self):
         for record in self:
             try:
                 if record.available_claude_models and record.available_claude_models != '[]':
                     models = json.loads(record.available_claude_models)
-                    html = '<ul style="list-style-type: none; padding-left: 0;">'
+                    html = '<div style="font-family: monospace; font-size: 14px;">'
+                    
                     for model in models:
                         # Resaltar el modelo actual
                         is_current = model.get("id") == record.claude_model
-                        style = 'background-color: #d4edda; padding: 5px; border-radius: 3px;' if is_current else ''
-                        html += f'<li style="{style}"><strong>{model.get("name", "Sin nombre")}</strong><br/>'
-                        html += f'<code>{model.get("id", "")}</code>'
+                        bg_color = '#d4edda' if is_current else '#f8f9fa'
+                        border_color = '#28a745' if is_current else '#dee2e6'
+                        
+                        html += f'''
+                        <div style="margin-bottom: 10px; padding: 10px; background-color: {bg_color}; 
+                                    border: 1px solid {border_color}; border-radius: 5px;">
+                            <div style="font-weight: bold; color: #333; margin-bottom: 5px;">
+                                {model.get("name", "Sin nombre")}
+                            </div>
+                            <div style="color: #666; font-size: 12px; word-break: break-all;">
+                                {model.get("id", "")}
+                            </div>
+                        '''
+                        
                         if is_current:
-                            html += ' <span class="badge badge-success">Actual</span>'
-                        html += '</li><br/>'
-                    html += '</ul>'
+                            html += '<div style="color: #28a745; font-size: 11px; margin-top: 5px;">✓ Modelo actual</div>'
+                        
+                        html += '</div>'
+                    
+                    html += '</div>'
                     record.claude_models_display = html
                 else:
-                    record.claude_models_display = '<p><i>No hay modelos cargados. Presione "Actualizar Modelos".</i></p>'
-            except:
-                record.claude_models_display = '<p><i>Error al mostrar modelos.</i></p>'
+                    record.claude_models_display = '<p style="color: #666; font-style: italic;">No hay modelos cargados. Presione "Actualizar Modelos".</p>'
+            except Exception as e:
+                _logger.error(f"Error al mostrar modelos: {str(e)}")
+                record.claude_models_display = '<p style="color: #dc3545; font-style: italic;">Error al mostrar modelos.</p>'
     
     @api.depends('ai_provider', 'openai_model', 'claude_model')
     def _compute_ai_model(self):
