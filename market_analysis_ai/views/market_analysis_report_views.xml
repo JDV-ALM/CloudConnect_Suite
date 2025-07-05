@@ -35,6 +35,13 @@
                             <field name="state" readonly="1"/>
                         </group>
                     </group>
+                    <group>
+                        <group string="Procesamiento AI" invisible="not ai_provider">
+                            <field name="ai_provider" widget="badge"/>
+                            <field name="ai_model"/>
+                        </group>
+                        <group></group>
+                    </group>
                     <group string="Mensaje Original">
                         <field name="message" widget="text" readonly="1"/>
                     </group>
@@ -62,6 +69,10 @@
                 <field name="price" widget="monetary" options="{'currency_field': 'currency_id'}"/>
                 <field name="currency_id" column_invisible="1"/>
                 <field name="telegram_user" optional="show"/>
+                <field name="ai_provider" widget="badge" 
+                       decoration-info="ai_provider == 'openai'"
+                       decoration-primary="ai_provider == 'claude'"
+                       optional="show"/>
                 <field name="state" widget="badge" 
                        decoration-success="state == 'processed'"
                        decoration-danger="state == 'error'"
@@ -79,10 +90,14 @@
                 <field name="name"/>
                 <field name="product_name"/>
                 <field name="telegram_user"/>
+                <field name="ai_model"/>
                 <separator/>
                 <filter string="Procesados" name="processed" domain="[('state', '=', 'processed')]"/>
                 <filter string="Con Error" name="error" domain="[('state', '=', 'error')]"/>
                 <filter string="Borradores" name="draft" domain="[('state', '=', 'draft')]"/>
+                <separator/>
+                <filter string="OpenAI" name="openai" domain="[('ai_provider', '=', 'openai')]"/>
+                <filter string="Claude" name="claude" domain="[('ai_provider', '=', 'claude')]"/>
                 <separator/>
                 <filter string="Hoy" name="today" domain="[('date_received', '&gt;=', datetime.datetime.now().replace(hour=0, minute=0, second=0)), ('date_received', '&lt;=', datetime.datetime.now().replace(hour=23, minute=59, second=59))]"/>
                 <filter string="Esta Semana" name="week" domain="[('date_received', '&gt;=', (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
@@ -93,6 +108,7 @@
                     <filter string="Producto" name="group_product" context="{'group_by': 'product_name'}"/>
                     <filter string="Usuario" name="group_user" context="{'group_by': 'telegram_user'}"/>
                     <filter string="Estado" name="group_state" context="{'group_by': 'state'}"/>
+                    <filter string="Proveedor AI" name="group_ai" context="{'group_by': 'ai_provider'}"/>
                     <filter string="Fecha" name="group_date" context="{'group_by': 'date_received:day'}"/>
                 </group>
             </search>
@@ -113,6 +129,8 @@
             <p>
                 Los reportes se crearán automáticamente cuando se reciban
                 mensajes de Telegram con información de precios.
+                El procesamiento se realizará con el proveedor de AI configurado
+                (OpenAI o Claude).
             </p>
         </field>
     </record>

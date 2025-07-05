@@ -10,11 +10,33 @@ class MarketAnalysisSettings(models.Model):
     _description = 'Configuración de Market Analysis AI'
     _rec_name = 'create_date'
     
+    ai_provider = fields.Selection([
+        ('openai', 'OpenAI'),
+        ('claude', 'Claude (Anthropic)')
+    ], string='Proveedor de AI', default='openai', required=True)
+    
     openai_api_key = fields.Char(
         string='OpenAI API Key',
-        required=True,
         help='Ingrese su API Key de OpenAI'
     )
+    
+    claude_api_key = fields.Char(
+        string='Claude API Key',
+        help='Ingrese su API Key de Claude (Anthropic)'
+    )
+    
+    ai_model = fields.Selection([
+        # OpenAI models
+        ('gpt-3.5-turbo', 'GPT-3.5 Turbo'),
+        ('gpt-4', 'GPT-4'),
+        ('gpt-4-turbo-preview', 'GPT-4 Turbo'),
+        # Claude models
+        ('claude-3-haiku-20240307', 'Claude 3 Haiku'),
+        ('claude-3-sonnet-20240229', 'Claude 3 Sonnet'),
+        ('claude-3-opus-20240229', 'Claude 3 Opus'),
+    ], string='Modelo de AI', 
+       default='gpt-3.5-turbo',
+       help='Seleccione el modelo de AI a utilizar')
     
     telegram_bot_token = fields.Char(
         string='Token del Bot de Telegram',
@@ -49,25 +71,59 @@ class MarketAnalysisSettings(models.Model):
             if active_count > 1:
                 raise ValidationError('Solo puede haber una configuración activa a la vez.')
     
+    @api.constrains('ai_provider', 'openai_api_key', 'claude_api_key')
+    def _check_api_keys(self):
+        """Valida que esté configurada la API key correspondiente al proveedor seleccionado"""
+        if self.ai_provider == 'openai' and not self.openai_api_key:
+            raise ValidationError('Debe proporcionar una API Key de OpenAI')
+        elif self.ai_provider == 'claude' and not self.claude_api_key:
+            raise ValidationError('Debe proporcionar una API Key de Claude')
+    
+    @api.onchange('ai_provider')
+    def _onchange_ai_provider(self):
+        """Actualiza el modelo por defecto según el proveedor"""
+        if self.ai_provider == 'openai':
+            self.ai_model = 'gpt-3.5-turbo'
+        elif self.ai_provider == 'claude':
+            self.ai_model = 'claude-3-sonnet-20240229'
+    
     def action_test_connection(self):
-        """Prueba la conexión con OpenAI y Telegram"""
+        """Prueba la conexión con el proveedor de AI y Telegram"""
         self.ensure_one()
         
         messages = []
         
-        # Test OpenAI
+        # Test AI Provider
         try:
-            from ..services.openai_service import OpenAIService
-            service = OpenAIService(self.openai_api_key)
-            response = service.test_connection()
-            if response:
-                messages.append("✓ Conexión con OpenAI exitosa")
-            else:
-                messages.append("✗ Error al conectar con OpenAI: Sin respuesta")
+            if self.ai_provider == 'openai':
+                from ..services.openai_service import OpenAIService
+                service = OpenAIService(self.openai_api_key)
+                service.model = self.ai_model
+                response = service.test_connection()
+                if response:
+                    messages.append("✓ Conexión con OpenAI exitosa")
+                else:
+                    messages.append("✗ Error al conectar con OpenAI: Sin respuesta")
+            
+            elif self.ai_provider == 'claude':
+                from ..services.claude_service import ClaudeService
+                service = ClaudeService(self.claude_api_key)
+                service.model = self.ai_model
+                response = service.test_connection()
+                if response:
+                    messages.append("✓ Conexión con Claude exitosa")
+                else:
+                    messages.append("✗ Error al conectar con Claude: Sin respuesta")
+                    
         except ImportError as e:
-            messages.append(f"✗ Error: Librería OpenAI no instalada. Ejecute: pip install openai")
+            if 'openai' in str(e):
+                messages.append(f"✗ Error: Librería OpenAI no instalada. Ejecute: pip install openai")
+            elif 'anthropic' in str(e):
+                messages.append(f"✗ Error: Librería Anthropic no instalada. Ejecute: pip install anthropic")
+            else:
+                messages.append(f"✗ Error: {str(e)}")
         except Exception as e:
-            messages.append(f"✗ Error OpenAI: {str(e)}")
+            messages.append(f"✗ Error {self.ai_provider}: {str(e)}")
         
         # Test Telegram
         try:
@@ -93,6 +149,25 @@ class MarketAnalysisSettings(models.Model):
             }
         }
     
+    def get_ai_service(self):
+        """Retorna el servicio de AI configurado"""
+        self.ensure_one()
+        
+        if self.ai_provider == 'openai':
+            from ..services.openai_service import OpenAIService
+            service = OpenAIService(self.openai_api_key)
+            service.model = self.ai_model
+            return service
+        
+        elif self.ai_provider == 'claude':
+            from ..services.claude_service import ClaudeService
+            service = ClaudeService(self.claude_api_key)
+            service.model = self.ai_model
+            return service
+        
+        else:
+            raise ValidationError(f'Proveedor de AI no válido: {self.ai_provider}')
+    
     @api.model
     def process_telegram_messages(self):
         """Procesa los mensajes pendientes de Telegram"""
@@ -103,11 +178,10 @@ class MarketAnalysisSettings(models.Model):
         
         try:
             from ..services.telegram_service import TelegramService
-            from ..services.openai_service import OpenAIService
             
             # Inicializar servicios
             telegram = TelegramService(settings.telegram_bot_token)
-            openai_service = OpenAIService(settings.openai_api_key)
+            ai_service = settings.get_ai_service()
             
             # Obtener mensajes nuevos
             updates = telegram.get_updates(offset=settings.last_telegram_offset + 1)
@@ -120,8 +194,8 @@ class MarketAnalysisSettings(models.Model):
                     if message_data and message_data.get("text"):
                         _logger.info(f"Procesando mensaje de {message_data.get('username', 'Unknown')}: {message_data['text']}")
                         
-                        # Procesar con OpenAI
-                        ai_result = openai_service.process_price_report(message_data["text"])
+                        # Procesar con AI
+                        ai_result = ai_service.process_price_report(message_data["text"])
                         
                         if ai_result.get("products"):
                             # Crear reportes

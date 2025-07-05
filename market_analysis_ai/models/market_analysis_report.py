@@ -71,10 +71,24 @@ class MarketAnalysisReport(models.Model):
         help='Información adicional del procesamiento con AI'
     )
     
+    ai_provider = fields.Selection([
+        ('openai', 'OpenAI'),
+        ('claude', 'Claude')
+    ], string='Procesado con', readonly=True)
+    
+    ai_model = fields.Char(
+        string='Modelo AI',
+        readonly=True,
+        help='Modelo de AI utilizado para procesar este reporte'
+    )
+    
     @api.model
     def create_from_telegram(self, message_data):
-        """Crea un reporte desde un mensaje de Telegram procesado por OpenAI"""
+        """Crea un reporte desde un mensaje de Telegram procesado por AI"""
         try:
+            # Obtener configuración activa para saber qué proveedor se usó
+            settings = self.env['market.analysis.settings'].get_active_settings()
+            
             # Extrae la información procesada
             products_info = message_data.get('products', [])
             
@@ -88,15 +102,18 @@ class MarketAnalysisReport(models.Model):
                     'telegram_chat_id': str(message_data.get('chat_id', '')),
                     'date_received': datetime.now(),
                     'state': 'processed',
-                    'processing_notes': product.get('notes', '')
+                    'processing_notes': product.get('notes', ''),
+                    'ai_provider': settings.ai_provider,
+                    'ai_model': settings.ai_model,
                 }
                 
                 report = self.create(vals)
                 _logger.info(f"Reporte creado: {report.name}")
                 
                 # Enviar notificación
+                provider_name = "OpenAI" if settings.ai_provider == 'openai' else "Claude"
                 report.message_post(
-                    body=f"Nuevo reporte de precio recibido vía Telegram: {product.get('name')} - ${product.get('price', 0)}"
+                    body=f"Nuevo reporte de precio recibido vía Telegram y procesado con {provider_name}: {product.get('name')} - ${product.get('price', 0)}"
                 )
                 
         except Exception as e:
@@ -114,15 +131,14 @@ class MarketAnalysisReport(models.Model):
             self.create(error_vals)
     
     def action_reprocess(self):
-        """Reprocesa el mensaje con OpenAI"""
+        """Reprocesa el mensaje con AI"""
         self.ensure_one()
         if self.message:
             try:
                 settings = self.env['market.analysis.settings'].get_active_settings()
-                from ..services.openai_service import OpenAIService
+                ai_service = settings.get_ai_service()
                 
-                service = OpenAIService(settings.openai_api_key)
-                result = service.process_price_report(self.message)
+                result = ai_service.process_price_report(self.message)
                 
                 if result and result.get('products'):
                     product = result['products'][0]
@@ -130,10 +146,13 @@ class MarketAnalysisReport(models.Model):
                         'product_name': product.get('name', ''),
                         'price': product.get('price', 0.0),
                         'state': 'processed',
-                        'processing_notes': product.get('notes', '')
+                        'processing_notes': product.get('notes', ''),
+                        'ai_provider': settings.ai_provider,
+                        'ai_model': settings.ai_model,
                     })
                     
-                    self.message_post(body="Mensaje reprocesado exitosamente")
+                    provider_name = "OpenAI" if settings.ai_provider == 'openai' else "Claude"
+                    self.message_post(body=f"Mensaje reprocesado exitosamente con {provider_name}")
                     
             except Exception as e:
                 self.write({
@@ -156,6 +175,24 @@ class MarketAnalysisReport(models.Model):
             FROM market_analysis_report
             WHERE state = 'processed' AND active = true
             GROUP BY product_name
+            ORDER BY count DESC
+        """)
+        
+        return self.env.cr.dictfetchall()
+    
+    @api.model
+    def get_ai_usage_statistics(self):
+        """Obtiene estadísticas de uso por proveedor de AI"""
+        self.env.cr.execute("""
+            SELECT 
+                ai_provider,
+                ai_model,
+                COUNT(*) as count,
+                COUNT(CASE WHEN state = 'processed' THEN 1 END) as successful,
+                COUNT(CASE WHEN state = 'error' THEN 1 END) as errors
+            FROM market_analysis_report
+            WHERE ai_provider IS NOT NULL
+            GROUP BY ai_provider, ai_model
             ORDER BY count DESC
         """)
         

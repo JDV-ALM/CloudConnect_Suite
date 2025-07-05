@@ -19,16 +19,29 @@
                         <h1>Configuración de APIs</h1>
                     </div>
                     <group>
-                        <group string="OpenAI">
-                            <field name="openai_api_key" 
-                                   password="True" 
-                                   placeholder="sk-proj-..." 
-                                   required="1"/>
+                        <group string="Proveedor de AI">
+                            <field name="ai_provider" widget="radio_button"/>
+                            <field name="ai_model" 
+                                   domain="[('id', 'in', ai_provider == 'openai' and ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo-preview'] or ['claude-3-haiku-20240307', 'claude-3-sonnet-20240229', 'claude-3-opus-20240229'])]"/>
                         </group>
                         <group string="Telegram">
                             <field name="telegram_bot_token" 
                                    placeholder="1234567890:ABCdefGHIjklMNOpqrsTUVwxyz..."
                                    required="1"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="OpenAI" invisible="ai_provider != 'openai'">
+                            <field name="openai_api_key" 
+                                   password="True" 
+                                   placeholder="sk-proj-..." 
+                                   required="ai_provider == 'openai'"/>
+                        </group>
+                        <group string="Claude (Anthropic)" invisible="ai_provider != 'claude'">
+                            <field name="claude_api_key" 
+                                   password="True" 
+                                   placeholder="sk-ant-..." 
+                                   required="ai_provider == 'claude'"/>
                         </group>
                     </group>
                     <group>
@@ -47,6 +60,26 @@
                                 <ol>
                                     <li>Obtén tu API Key desde <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a></li>
                                     <li>Copia y pega la key completa en el campo correspondiente</li>
+                                    <li>Modelos disponibles:
+                                        <ul>
+                                            <li><b>GPT-3.5 Turbo:</b> Más económico, bueno para tareas simples</li>
+                                            <li><b>GPT-4:</b> Más preciso y capaz</li>
+                                            <li><b>GPT-4 Turbo:</b> Versión mejorada de GPT-4</li>
+                                        </ul>
+                                    </li>
+                                </ol>
+                                
+                                <h4 class="mt-3">Configuración de Claude (Anthropic)</h4>
+                                <ol>
+                                    <li>Obtén tu API Key desde <a href="https://console.anthropic.com/api-keys" target="_blank">Anthropic Console</a></li>
+                                    <li>Copia y pega la key completa en el campo correspondiente</li>
+                                    <li>Modelos disponibles:
+                                        <ul>
+                                            <li><b>Claude 3 Haiku:</b> Más rápido y económico</li>
+                                            <li><b>Claude 3 Sonnet:</b> Balance entre velocidad y capacidad</li>
+                                            <li><b>Claude 3 Opus:</b> Máxima capacidad y precisión</li>
+                                        </ul>
+                                    </li>
                                 </ol>
                                 
                                 <h4 class="mt-3">Configuración de Telegram</h4>
@@ -56,6 +89,47 @@
                                     <li>El bot responderá automáticamente a cualquier usuario que le envíe mensajes</li>
                                     <li>Los usuarios pueden enviar mensajes directamente al bot o agregarlo a grupos</li>
                                 </ol>
+                            </div>
+                        </page>
+                        <page string="Comparación de Proveedores">
+                            <div class="alert alert-secondary" role="alert">
+                                <h4>OpenAI vs Claude</h4>
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Característica</th>
+                                            <th>OpenAI</th>
+                                            <th>Claude (Anthropic)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td>Precisión</td>
+                                            <td>Excelente, especialmente GPT-4</td>
+                                            <td>Excelente, especialmente Claude 3 Opus</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Velocidad</td>
+                                            <td>Rápida con GPT-3.5 Turbo</td>
+                                            <td>Muy rápida con Claude 3 Haiku</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Costo</td>
+                                            <td>Variable según modelo</td>
+                                            <td>Generalmente más económico</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Contexto</td>
+                                            <td>Hasta 128k tokens (GPT-4 Turbo)</td>
+                                            <td>Hasta 200k tokens (todos los modelos)</td>
+                                        </tr>
+                                        <tr>
+                                            <td>Idiomas</td>
+                                            <td>Excelente soporte multilingüe</td>
+                                            <td>Excelente soporte multilingüe</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </page>
                     </notebook>
@@ -71,6 +145,8 @@
         <field name="arch" type="xml">
             <tree string="Configuraciones">
                 <field name="create_date"/>
+                <field name="ai_provider"/>
+                <field name="ai_model"/>
                 <field name="active" widget="boolean_toggle"/>
                 <field name="last_telegram_offset"/>
             </tree>
@@ -84,11 +160,12 @@
         <field name="view_mode">tree,form</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
-                Configura las APIs de OpenAI y Telegram
+                Configura las APIs de AI y Telegram
             </p>
             <p>
+                Puedes elegir entre OpenAI o Claude (Anthropic) como proveedor de AI.
                 Necesitas configurar las credenciales para que el sistema
-                pueda recibir mensajes de Telegram y procesarlos con OpenAI.
+                pueda recibir mensajes de Telegram y procesarlos con AI.
             </p>
         </field>
     </record>

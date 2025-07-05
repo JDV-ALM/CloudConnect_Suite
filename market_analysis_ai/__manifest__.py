@@ -1,11 +1,17 @@
 {
     'name': 'Market Analysis AI',
-    'version': '1.0',
+    'version': '1.1',
     'category': 'Tools',
-    'summary': 'Análisis de mercados con OpenAI y Telegram',
+    'summary': 'Análisis de mercados con OpenAI/Claude y Telegram',
     'description': """
         App para recibir reportes de precios de productos vía Telegram
-        y procesarlos con OpenAI para análisis de mercados.
+        y procesarlos con OpenAI o Claude (Anthropic) para análisis de mercados.
+        
+        Características:
+        - Soporte para OpenAI (GPT-3.5, GPT-4) y Claude (Haiku, Sonnet, Opus)
+        - Recepción automática de mensajes desde Telegram
+        - Procesamiento inteligente de precios en lenguaje natural
+        - Estadísticas y tendencias de precios
     """,
     'author': 'Almus Dev',
     'website': 'https://www.almus.dev',
@@ -18,7 +24,7 @@
         'views/menu_views.xml',
     ],
     'external_dependencies': {
-        'python': ['openai', 'requests'],
+        'python': ['openai', 'anthropic', 'requests'],
     },
     'requirements': [
         'requirements.txt',
