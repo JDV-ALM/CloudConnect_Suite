@@ -2,6 +2,7 @@ import anthropic
 import logging
 import json
 import re
+import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -131,7 +132,10 @@ class ClaudeService:
                 _logger.error("API Key de Claude vacía")
                 return False
                 
-            if not self.client.api_key.startswith('sk-ant-'):
+            # Claude API keys pueden tener diferentes formatos
+            if not (self.client.api_key.startswith('sk-ant-') or 
+                    self.client.api_key.startswith('sk-') or
+                    len(self.client.api_key) > 20):
                 _logger.error("API Key de Claude con formato inválido")
                 return False
             
@@ -145,7 +149,7 @@ class ClaudeService:
             )
             
             # Verificar que la respuesta tenga contenido
-            if response and response.content and response.content[0].text:
+            if response and response.content and len(response.content) > 0:
                 _logger.info("Conexión con Claude exitosa")
                 return True
             else:
@@ -160,12 +164,53 @@ class ClaudeService:
                 _logger.error("API Key de Claude inválida o expirada")
             elif "429" in error_msg:
                 _logger.error("Límite de tasa excedido en Claude")
-            elif "model" in error_msg:
-                _logger.error(f"Modelo {self.model} no disponible")
+            elif "model" in error_msg or "does not exist" in error_msg:
+                _logger.error(f"Modelo {self.model} no disponible. Verifique que el modelo sea válido.")
+            elif "api_key" in error_msg.lower():
+                _logger.error("Problema con la API Key de Claude")
             else:
                 _logger.error(f"Error al probar conexión con Claude: {error_msg}")
             
             return False
+    
+    @classmethod
+    def get_available_models(cls, api_key):
+        """Obtiene la lista de modelos disponibles desde la API de Claude"""
+        try:
+            headers = {
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            }
+            
+            response = requests.get(
+                "https://api.anthropic.com/v1/models",
+                headers=headers,
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                models = []
+                
+                # Extraer los modelos de la respuesta
+                for model in data.get('data', []):
+                    model_info = {
+                        'id': model.get('id'),
+                        'name': model.get('display_name', model.get('id')),
+                        'created_at': model.get('created_at')
+                    }
+                    models.append(model_info)
+                
+                _logger.info(f"Modelos Claude disponibles: {[m['id'] for m in models]}")
+                return models
+            else:
+                _logger.error(f"Error al obtener modelos: {response.status_code} - {response.text}")
+                return []
+                
+        except Exception as e:
+            _logger.error(f"Error al consultar modelos disponibles: {str(e)}")
+            return []
     
     def analyze_price_trends(self, products_data):
         """Analiza tendencias de precios usando Claude"""

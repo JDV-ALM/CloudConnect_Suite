@@ -1,6 +1,7 @@
 from odoo import models, fields, api
 from odoo.exceptions import ValidationError
 import logging
+import json
 
 _logger = logging.getLogger(__name__)
 
@@ -25,21 +26,22 @@ class MarketAnalysisSettings(models.Model):
         help='Ingrese su API Key de Claude (Anthropic)'
     )
     
-    openai_model = fields.Selection([
-        ('gpt-3.5-turbo', 'GPT-3.5 Turbo'),
-        ('gpt-4', 'GPT-4'),
-        ('gpt-4-turbo-preview', 'GPT-4 Turbo'),
-    ], string='Modelo OpenAI', 
-       default='gpt-3.5-turbo',
-       help='Seleccione el modelo de OpenAI a utilizar')
+    # Campos de texto para almacenar modelos disponibles como JSON
+    available_claude_models = fields.Text(
+        string='Modelos Claude Disponibles',
+        default='[]'
+    )
     
-    claude_model = fields.Selection([
-        ('claude-3-haiku-20240307', 'Claude 3 Haiku'),
-        ('claude-3-sonnet-20240229', 'Claude 3 Sonnet'),
-        ('claude-3-opus-20240229', 'Claude 3 Opus'),
-    ], string='Modelo Claude', 
-       default='claude-3-sonnet-20240229',
-       help='Seleccione el modelo de Claude a utilizar')
+    # Campo de texto simple para el modelo seleccionado
+    openai_model = fields.Char(
+        string='Modelo OpenAI',
+        default='gpt-3.5-turbo'
+    )
+    
+    claude_model = fields.Char(
+        string='Modelo Claude',
+        default='claude-3-sonnet-20240229'
+    )
     
     # Campo computado para obtener el modelo activo
     ai_model = fields.Char(
@@ -47,16 +49,6 @@ class MarketAnalysisSettings(models.Model):
         compute='_compute_ai_model',
         store=True
     )
-    
-    @api.depends('ai_provider', 'openai_model', 'claude_model')
-    def _compute_ai_model(self):
-        for record in self:
-            if record.ai_provider == 'openai':
-                record.ai_model = record.openai_model
-            elif record.ai_provider == 'claude':
-                record.ai_model = record.claude_model
-            else:
-                record.ai_model = False
     
     telegram_bot_token = fields.Char(
         string='Token del Bot de Telegram',
@@ -74,6 +66,39 @@ class MarketAnalysisSettings(models.Model):
         default=0,
         help='Último update_id procesado de Telegram'
     )
+    
+    # Campo computado para mostrar modelos de forma legible
+    claude_models_display = fields.Html(
+        string='Modelos Disponibles',
+        compute='_compute_claude_models_display'
+    )
+    
+    @api.depends('available_claude_models')
+    def _compute_claude_models_display(self):
+        for record in self:
+            try:
+                if record.available_claude_models and record.available_claude_models != '[]':
+                    models = json.loads(record.available_claude_models)
+                    html = '<ul style="list-style-type: none; padding-left: 0;">'
+                    for model in models:
+                        html += f'<li><strong>{model.get("name", "Sin nombre")}</strong><br/>'
+                        html += f'<code>{model.get("id", "")}</code></li>'
+                    html += '</ul>'
+                    record.claude_models_display = html
+                else:
+                    record.claude_models_display = '<p><i>No hay modelos cargados. Presione "Actualizar Modelos".</i></p>'
+            except:
+                record.claude_models_display = '<p><i>Error al mostrar modelos.</i></p>'
+    
+    @api.depends('ai_provider', 'openai_model', 'claude_model')
+    def _compute_ai_model(self):
+        for record in self:
+            if record.ai_provider == 'openai':
+                record.ai_model = record.openai_model
+            elif record.ai_provider == 'claude':
+                record.ai_model = record.claude_model
+            else:
+                record.ai_model = False
     
     @api.model
     def get_active_settings(self):
@@ -106,6 +131,79 @@ class MarketAnalysisSettings(models.Model):
             self.openai_model = self.openai_model or 'gpt-3.5-turbo'
         elif self.ai_provider == 'claude':
             self.claude_model = self.claude_model or 'claude-3-sonnet-20240229'
+            # Si es Claude y tenemos API key, actualizar modelos
+            if self.claude_api_key:
+                self._update_claude_models()
+    
+    @api.onchange('claude_api_key')
+    def _onchange_claude_api_key(self):
+        """Cuando se cambia la API key de Claude, actualizar modelos disponibles"""
+        if self.ai_provider == 'claude' and self.claude_api_key:
+            self._update_claude_models()
+    
+    def _update_claude_models(self):
+        """Actualiza la lista de modelos disponibles de Claude"""
+        try:
+            from ..services.claude_service import ClaudeService
+            models = ClaudeService.get_available_models(self.claude_api_key)
+            if models:
+                self.available_claude_models = json.dumps(models)
+                # Si el modelo actual no está en la lista, usar el primero
+                model_ids = [m['id'] for m in models]
+                if self.claude_model not in model_ids and model_ids:
+                    self.claude_model = model_ids[0]
+                    
+                # Log para información
+                _logger.info(f"Modelos Claude disponibles: {', '.join([m['name'] for m in models])}")
+                
+        except Exception as e:
+            _logger.error(f"Error al obtener modelos Claude: {str(e)}")
+    
+    def action_refresh_models(self):
+        """Actualiza la lista de modelos disponibles desde las APIs"""
+        self.ensure_one()
+        
+        messages = []
+        
+        if self.ai_provider == 'claude' and self.claude_api_key:
+            try:
+                from ..services.claude_service import ClaudeService
+                models = ClaudeService.get_available_models(self.claude_api_key)
+                
+                if models:
+                    self.available_claude_models = json.dumps(models)
+                    
+                    # Crear mensaje con lista de modelos
+                    model_list = '\n'.join([f"  • {m['name']} ({m['id']})" for m in models])
+                    messages.append(f"✓ Modelos Claude actualizados:\n{model_list}")
+                    
+                    # Si el modelo actual no está en la lista, seleccionar el primero
+                    model_ids = [m['id'] for m in models]
+                    if self.claude_model not in model_ids and model_ids:
+                        self.claude_model = model_ids[0]
+                        messages.append(f"ℹ Modelo seleccionado: {self.claude_model}")
+                else:
+                    messages.append("✗ No se pudieron obtener los modelos de Claude")
+                    
+            except ImportError:
+                messages.append("✗ Error: Librería anthropic no instalada")
+            except Exception as e:
+                messages.append(f"✗ Error al actualizar modelos Claude: {str(e)}")
+        
+        elif self.ai_provider == 'openai':
+            messages.append("ℹ Los modelos de OpenAI se mantienen estáticos por ahora")
+            messages.append("  • GPT-3.5 Turbo\n  • GPT-4\n  • GPT-4 Turbo")
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': 'Actualización de Modelos',
+                'message': '\n'.join(messages),
+                'sticky': True,
+                'type': 'warning' if any('✗' in m for m in messages) else 'success',
+            }
+        }
     
     def action_test_connection(self):
         """Prueba la conexión con el proveedor de AI y Telegram"""
@@ -118,7 +216,8 @@ class MarketAnalysisSettings(models.Model):
             if self.ai_provider == 'openai':
                 from ..services.openai_service import OpenAIService
                 service = OpenAIService(self.openai_api_key)
-                service.model = self.ai_model
+                if self.openai_model:
+                    service.model = self.openai_model
                 response = service.test_connection()
                 if response:
                     messages.append("✓ Conexión con OpenAI exitosa")
@@ -128,10 +227,12 @@ class MarketAnalysisSettings(models.Model):
             elif self.ai_provider == 'claude':
                 from ..services.claude_service import ClaudeService
                 service = ClaudeService(self.claude_api_key)
-                service.model = self.ai_model
+                if self.claude_model:
+                    service.model = self.claude_model
                 response = service.test_connection()
                 if response:
                     messages.append("✓ Conexión con Claude exitosa")
+                    messages.append(f"  Modelo: {self.claude_model}")
                 else:
                     messages.append("✗ Error al conectar con Claude: Sin respuesta")
                     
@@ -176,13 +277,15 @@ class MarketAnalysisSettings(models.Model):
         if self.ai_provider == 'openai':
             from ..services.openai_service import OpenAIService
             service = OpenAIService(self.openai_api_key)
-            service.model = self.ai_model
+            if self.openai_model:
+                service.model = self.openai_model
             return service
         
         elif self.ai_provider == 'claude':
             from ..services.claude_service import ClaudeService
             service = ClaudeService(self.claude_api_key)
-            service.model = self.ai_model
+            if self.claude_model:
+                service.model = self.claude_model
             return service
         
         else:

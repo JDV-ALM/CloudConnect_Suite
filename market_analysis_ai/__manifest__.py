@@ -33,9 +33,5 @@
     'application': True,
     'auto_install': False,
     'license': 'LGPL-3',
-    'assets': {
-        'web.assets_backend': [
-            'market_analysis_ai/static/src/js/password_field.js',
-        ],
-    },
+
 }
