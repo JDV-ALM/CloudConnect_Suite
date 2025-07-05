@@ -16,13 +16,13 @@ class ClaudeService:
         """Procesa un mensaje de reporte de precios usando Claude"""
         try:
             system_prompt = """
-            Eres un asistente especializado en extraer información de reportes de precios de productos.
+            Eres un asistente especializado en extraer información de precios de productos.
             Tu tarea es identificar productos y sus precios desde mensajes en lenguaje natural.
             
             Debes extraer:
-            - Nombre del producto
+            - Nombre de productos
             - Precio (número)
-            - Cualquier nota adicional relevante
+            - Notas adicionales si las hay
             
             Responde SIEMPRE en formato JSON con la siguiente estructura:
             {
@@ -42,9 +42,10 @@ class ClaudeService:
             - "El arroz está a 2.50"
             - "Vi que el aceite subió a $4.20"
             - "Tomates 1.80, papas 2.30"
+            - "La gente de Purolomo tiene el mejor precio, tiene el arroz a 2.50"
             """
             
-            user_prompt = f"Extrae los productos y precios del siguiente mensaje:\n\n{message}"
+            user_prompt = f"Identifica y extrae los productos y precios del siguiente mensaje, el mensaje puede ser un texto con mucha informacion que podria no ser relevante:\n\n{message}"
             
             response = self.client.messages.create(
                 model=self.model,
