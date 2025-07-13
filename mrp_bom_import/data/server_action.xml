@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Server Action para importar BoMs -->
+        <record id="action_server_mrp_bom_import" model="ir.actions.server">
+            <field name="name">Import BoMs from CSV</field>
+            <field name="model_id" ref="mrp.model_mrp_bom"/>
+            <field name="binding_model_id" ref="mrp.model_mrp_bom"/>
+            <field name="binding_view_types">list</field>
+            <field name="state">code</field>
+            <field name="code">
+action = {
+    'type': 'ir.actions.act_window',
+    'name': 'Import Bill of Materials',
+    'res_model': 'mrp.bom.import.wizard',
+    'view_mode': 'form',
+    'target': 'new',
+    'context': env.context,
+}
+            </field>
+        </record>
+    </data>
+</odoo>

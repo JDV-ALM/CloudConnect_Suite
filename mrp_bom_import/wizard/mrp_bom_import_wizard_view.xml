@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_mrp_bom_import_wizard_form" model="ir.ui.view">
+        <field name="name">mrp.bom.import.wizard.form</field>
+        <field name="model">mrp.bom.import.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Import Bill of Materials">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>Import Bill of Materials from CSV</h1>
+                    </div>
+                    
+                    <!-- Estado Draft: Selección de archivo -->
+                    <group invisible="state != 'draft'">
+                        <group>
+                            <field name="state" invisible="1"/>
+                            <field name="file_data" filename="file_name" widget="binary"/>
+                            <field name="file_name" invisible="1"/>
+                            <field name="delimiter"/>
+                        </group>
+                        <group>
+                            <div class="alert alert-info" role="alert">
+                                <h4 class="alert-heading">CSV Format Instructions:</h4>
+                                <ul>
+                                    <li><strong>bom_code</strong>: Unique code for the BoM (required)</li>
+                                    <li><strong>product_code</strong>: Product internal reference or barcode</li>
+                                    <li><strong>product_qty</strong>: Quantity to produce (default: 1)</li>
+                                    <li><strong>product_uom</strong>: Unit of measure name</li>
+                                    <li><strong>type</strong>: normal or phantom (default: normal)</li>
+                                    <li><strong>component_code</strong>: Component internal reference or barcode</li>
+                                    <li><strong>component_qty</strong>: Component quantity</li>
+                                    <li><strong>component_uom</strong>: Component unit of measure</li>
+                                    <li><strong>operation_name</strong>: Operation name (optional)</li>
+                                </ul>
+                                <p class="mb-0">
+                                    <button name="action_download_template" type="object" 
+                                            class="btn btn-link p-0" string="Download Template CSV"/>
+                                </p>
+                            </div>
+                        </group>
+                    </group>
+                    
+                    <!-- Estado Done: Resultados exitosos -->
+                    <group invisible="state != 'done'">
+                        <div class="alert alert-success" role="alert">
+                            <h4 class="alert-heading">Import Successful!</h4>
+                            <field name="result_message" readonly="1" nolabel="1"/>
+                            <p>
+                                <strong>Total BoMs imported:</strong> <field name="imported_count" readonly="1" nolabel="1" class="oe_inline"/>
+                            </p>
+                        </div>
+                        
+                        <group invisible="not error_message">
+                            <div class="alert alert-warning" role="alert">
+                                <h4 class="alert-heading">Warnings:</h4>
+                                <field name="error_message" readonly="1" nolabel="1"/>
+                            </div>
+                        </group>
+                    </group>
+                    
+                    <!-- Estado Error: Mostrar errores -->
+                    <group invisible="state != 'error'">
+                        <div class="alert alert-danger" role="alert">
+                            <h4 class="alert-heading">Import Failed!</h4>
+                            <field name="result_message" readonly="1" nolabel="1"/>
+                        </div>
+                        
+                        <group invisible="not error_message">
+                            <div class="alert alert-danger" role="alert">
+                                <h4 class="alert-heading">Errors:</h4>
+                                <field name="error_message" readonly="1" nolabel="1" style="white-space: pre-wrap;"/>
+                            </div>
+                        </group>
+                    </group>
+                </sheet>
+                
+                <footer>
+                    <button name="action_import" string="Import" type="object" 
+                            class="btn-primary" invisible="state != 'draft'"/>
+                    <button name="action_view_boms" string="View BoMs" type="object" 
+                            class="btn-primary" invisible="state != 'done'"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+</odoo>
