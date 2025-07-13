@@ -5,81 +5,84 @@
         <field name="model">mrp.bom.import.wizard</field>
         <field name="arch" type="xml">
             <form string="Import Bill of Materials">
-                <sheet>
-                    <div class="oe_title">
-                        <h1>Import Bill of Materials from CSV</h1>
-                    </div>
-                    
-                    <!-- Estado Draft: Selección de archivo -->
-                    <group invisible="state != 'draft'">
-                        <group>
-                            <field name="state" invisible="1"/>
-                            <field name="file_data" filename="file_name" widget="binary"/>
-                            <field name="file_name" invisible="1"/>
-                            <field name="delimiter"/>
-                        </group>
-                        <group>
-                            <div class="alert alert-info" role="alert">
-                                <h4 class="alert-heading">CSV Format Instructions:</h4>
-                                <ul>
-                                    <li><strong>bom_code</strong>: Unique code for the BoM (required)</li>
-                                    <li><strong>product_code</strong>: Product internal reference or barcode</li>
-                                    <li><strong>product_qty</strong>: Quantity to produce (default: 1)</li>
-                                    <li><strong>product_uom</strong>: Unit of measure name</li>
-                                    <li><strong>type</strong>: normal or phantom (default: normal)</li>
-                                    <li><strong>component_code</strong>: Component internal reference or barcode</li>
-                                    <li><strong>component_qty</strong>: Component quantity</li>
-                                    <li><strong>component_uom</strong>: Component unit of measure</li>
-                                    <li><strong>operation_name</strong>: Operation name (optional)</li>
-                                </ul>
-                                <p class="mb-0">
-                                    <button name="action_download_template" type="object" 
-                                            class="btn btn-link p-0" string="Download Template CSV"/>
-                                </p>
-                            </div>
-                        </group>
+                <field name="state" invisible="1"/>
+                
+                <!-- Estado Draft: Selección de archivo -->
+                <group invisible="state != 'draft'">
+                    <group string="Import Settings">
+                        <field name="file_data" filename="file_name" widget="binary" class="oe_inline"/>
+                        <field name="file_name" invisible="1"/>
+                        <field name="delimiter" class="oe_inline"/>
                     </group>
-                    
-                    <!-- Estado Done: Resultados exitosos -->
-                    <group invisible="state != 'done'">
-                        <div class="alert alert-success" role="alert">
-                            <h4 class="alert-heading">Import Successful!</h4>
-                            <field name="result_message" readonly="1" nolabel="1"/>
-                            <p>
-                                <strong>Total BoMs imported:</strong> <field name="imported_count" readonly="1" nolabel="1" class="oe_inline"/>
-                            </p>
+                    <group string="CSV Format">
+                        <div class="text-muted">
+                            <p>The CSV file must contain the following columns:</p>
+                            <ul class="mb-0">
+                                <li><b>bom_code</b>: Unique BoM reference</li>
+                                <li><b>product_code</b>: Product code, barcode or External ID</li>
+                                <li><b>product_qty</b>: Quantity to produce</li>
+                                <li><b>product_uom</b>: Unit of measure</li>
+                                <li><b>type</b>: normal or phantom</li>
+                                <li><b>component_code</b>: Component code, barcode or External ID</li>
+                                <li><b>component_qty</b>: Component quantity</li>
+                                <li><b>component_uom</b>: Component UoM</li>
+                            </ul>
                         </div>
-                        
-                        <group invisible="not error_message">
-                            <div class="alert alert-warning" role="alert">
-                                <h4 class="alert-heading">Warnings:</h4>
-                                <field name="error_message" readonly="1" nolabel="1"/>
+                    </group>
+                </group>
+                
+                <!-- Estado Done: Resultados exitosos -->
+                <div invisible="state != 'done'">
+                    <separator string="Import Summary"/>
+                    <group>
+                        <div class="alert alert-success d-flex align-items-center" role="alert">
+                            <i class="fa fa-check-circle fa-2x me-3"/>
+                            <div>
+                                <h5 class="alert-heading mb-1">Import Successful!</h5>
+                                <span><field name="result_message" readonly="1" nolabel="1"/></span>
                             </div>
-                        </group>
+                        </div>
+                    </group>
+                    <group col="4">
+                        <label for="imported_count" string="Total BoMs imported"/>
+                        <div>
+                            <field name="imported_count" readonly="1" nolabel="1" class="oe_inline fw-bold"/>
+                        </div>
                     </group>
                     
-                    <!-- Estado Error: Mostrar errores -->
-                    <group invisible="state != 'error'">
-                        <div class="alert alert-danger" role="alert">
-                            <h4 class="alert-heading">Import Failed!</h4>
-                            <field name="result_message" readonly="1" nolabel="1"/>
+                    <group invisible="not error_message" string="Warnings">
+                        <div class="alert alert-warning" role="alert">
+                            <field name="error_message" readonly="1" nolabel="1"/>
                         </div>
-                        
-                        <group invisible="not error_message">
-                            <div class="alert alert-danger" role="alert">
-                                <h4 class="alert-heading">Errors:</h4>
-                                <field name="error_message" readonly="1" nolabel="1" style="white-space: pre-wrap;"/>
-                            </div>
-                        </group>
                     </group>
-                </sheet>
+                </div>
+                
+                <!-- Estado Error: Mostrar errores -->
+                <div invisible="state != 'error'">
+                    <separator string="Import Failed"/>
+                    <group>
+                        <div class="alert alert-danger d-flex align-items-center" role="alert">
+                            <i class="fa fa-exclamation-triangle fa-2x me-3"/>
+                            <div>
+                                <h5 class="alert-heading mb-1">Import Failed!</h5>
+                                <span><field name="result_message" readonly="1" nolabel="1"/></span>
+                            </div>
+                        </div>
+                    </group>
+                    
+                    <group invisible="not error_message" string="Error Details">
+                        <field name="error_message" readonly="1" nolabel="1" style="white-space: pre-wrap; background-color: #f8f9fa; padding: 10px; border-radius: 5px;"/>
+                    </group>
+                </div>
                 
                 <footer>
                     <button name="action_import" string="Import" type="object" 
-                            class="btn-primary" invisible="state != 'draft'"/>
+                            class="btn-primary" data-hotkey="q" invisible="state != 'draft'"/>
+                    <button name="action_download_template" string="Download Template" type="object" 
+                            class="btn-secondary" invisible="state != 'draft'"/>
                     <button name="action_view_boms" string="View BoMs" type="object" 
                             class="btn-primary" invisible="state != 'done'"/>
-                    <button string="Close" class="btn-secondary" special="cancel"/>
+                    <button string="Close" class="btn-secondary" special="cancel" data-hotkey="x"/>
                 </footer>
             </form>
         </field>

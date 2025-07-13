@@ -137,11 +137,7 @@ class MrpBomImportWizard(models.TransientModel):
         """Create a BoM with its components"""
         try:
             # Buscar producto principal
-            product = self.env['product.product'].search([
-                '|',
-                ('default_code', '=', bom_info['product_code']),
-                ('barcode', '=', bom_info['product_code'])
-            ], limit=1)
+            product = self._find_product(bom_info['product_code'])
             
             if not product:
                 return {
@@ -173,11 +169,7 @@ class MrpBomImportWizard(models.TransientModel):
             
             # Procesar componentes
             for comp in bom_info['components']:
-                comp_product = self.env['product.product'].search([
-                    '|',
-                    ('default_code', '=', comp['product_code']),
-                    ('barcode', '=', comp['product_code'])
-                ], limit=1)
+                comp_product = self._find_product(comp['product_code'])
                 
                 if not comp_product:
                     return {

@@ -1,0 +1,11 @@
+bom_code,product_code,product_qty,product_uom,type,component_code,component_qty,component_uom,operation_name
+BOM-MESA-001,MESA-MADERA-001,1,Units,normal,TABLERO-001,1,Units,
+BOM-MESA-001,,,,,PATA-001,4,Units,
+BOM-MESA-001,,,,,TORNILLO-001,16,Units,
+BOM-MESA-001,,,,,BARNIZ-001,0.5,Liters,Painting
+BOM-SILLA-001,SILLA-MADERA-001,1,Units,normal,ASIENTO-001,1,Units,
+BOM-SILLA-001,,,,,RESPALDO-001,1,Units,
+BOM-SILLA-001,,,,,PATA-002,4,Units,
+BOM-SILLA-001,,,,,TORNILLO-001,12,Units,
+BOM-KIT-001,KIT-COMEDOR-001,1,Units,phantom,MESA-MADERA-001,1,Units,
+BOM-KIT-001,,,,,SILLA-MADERA-001,4,Units,
