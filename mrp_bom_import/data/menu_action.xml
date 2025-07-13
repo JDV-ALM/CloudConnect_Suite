@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Acción de ventana para el wizard -->
+        <record id="action_mrp_bom_import_wizard" model="ir.actions.act_window">
+            <field name="name">Import BoMs from CSV</field>
+            <field name="res_model">mrp.bom.import.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Import Bill of Materials from CSV file
+                </p>
+                <p>
+                    Upload a CSV file with your BoMs structure to create multiple bills of materials at once.
+                </p>
+            </field>
+        </record>
+
+        <!-- Opción adicional: Menú directo en Fabricación -->
+        <menuitem id="menu_mrp_bom_import"
+                  name="Import BoMs"
+                  parent="mrp.menu_mrp_bom"
+                  action="action_mrp_bom_import_wizard"
+                  sequence="20"
+                  groups="mrp.group_mrp_user"/>
+    </data>
+</odoo>

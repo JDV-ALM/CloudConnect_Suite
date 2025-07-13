@@ -18,6 +18,7 @@
         'security/ir.model.access.csv',
         'wizard/mrp_bom_import_wizard_view.xml',
         'data/server_action.xml',
+        'data/menu_action.xml',
     ],
     'installable': True,
     'application': False,
