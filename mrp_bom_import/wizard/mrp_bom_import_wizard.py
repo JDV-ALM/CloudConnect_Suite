@@ -222,6 +222,38 @@ class MrpBomImportWizard(models.TransientModel):
         
         return uom or default_uom
 
+    def _find_product(self, product_code):
+        """Find product by code, barcode or external ID"""
+        if not product_code:
+            return False
+        
+        # Primero buscar por ID externo (formato: __export__.model_name_id_hash)
+        if product_code.startswith('__export__.'):
+            try:
+                # Extraer el modelo y buscar
+                if 'product_template_' in product_code:
+                    # Es una plantilla de producto
+                    template = self.env.ref(product_code, raise_if_not_found=False)
+                    if template and template._name == 'product.template':
+                        # Retornar la primera variante
+                        return template.product_variant_ids[:1]
+                elif 'product_product_' in product_code:
+                    # Es una variante de producto
+                    product = self.env.ref(product_code, raise_if_not_found=False)
+                    if product and product._name == 'product.product':
+                        return product
+            except:
+                pass
+        
+        # Buscar por código interno o código de barras
+        product = self.env['product.product'].search([
+            '|',
+            ('default_code', '=', product_code),
+            ('barcode', '=', product_code)
+        ], limit=1)
+        
+        return product
+
     def action_view_boms(self):
         """Open BoMs list view"""
         return {
